@@ -1,0 +1,30 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment and secrets
+.env
+.env.*
+*.key
+*.token
+
+# OS generated files
+Thumbs.db
+[Dd]esktop.ini
+.DS_Store
+
+# Temporary outputs & logs
+output*.png
+output*.jpg
+output*.mp3
+output*.wav
+temp/
+tmp/
+*.log
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.swp
+*.swo

@@ -1,0 +1,13 @@
+{
+  "id": "edge-tts",
+  "name": "edge-tts",
+  "displayName": "Edge Neural TTS",
+  "version": "1.0.0",
+  "description": "基于微软 Edge Azure 神经网络大模型的高清真人级文本转语音，零 API Key、零费用、零限流、秒级生成，支持 400+ 多国语言极拟真音色",
+  "author": "stillfantasy",
+  "license": "MIT",
+  "tags": ["audio", "tts", "microsoft", "edge-tts", "azure", "neural-voice"],
+  "env": [],
+  "outputs": ["D:\\ai-outputs\\audio\\"],
+  "agentCreated": true
+}
