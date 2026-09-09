@@ -1,0 +1,63 @@
+{
+  "description": "网站导览视频常用音效清单",
+  "note": "实际音效文件需从 website-to-video skill 的 assets/sfx/ 目录复制到项目的 sfx/ 目录",
+  "sfx": [
+    {
+      "name": "click.mp3",
+      "description": "鼠标点击声",
+      "usage": "点击卡片/按钮时触发",
+      "default_volume": 0.5,
+      "duration": "0.3s"
+    },
+    {
+      "name": "click2.mp3",
+      "description": "鼠标点击声（变体2）",
+      "usage": "第二次点击时使用，避免重复",
+      "default_volume": 0.5,
+      "duration": "0.3s"
+    },
+    {
+      "name": "whoosh-short.mp3",
+      "description": "短促的嗖声",
+      "usage": "页面切换/淡出时触发",
+      "default_volume": 0.3,
+      "duration": "0.57s"
+    },
+    {
+      "name": "whoosh2.mp3",
+      "description": "嗖声（变体2）",
+      "usage": "第二次页面切换时使用",
+      "default_volume": 0.3,
+      "duration": "0.57s"
+    },
+    {
+      "name": "chime.mp3",
+      "description": "清脆的叮咚声",
+      "usage": "重点内容出现/数据展示时",
+      "default_volume": 0.3,
+      "duration": "1.0s"
+    },
+    {
+      "name": "pop.mp3",
+      "description": "短促的弹出声",
+      "usage": "圆点点亮/卡片出现时",
+      "default_volume": 0.4,
+      "duration": "0.3s"
+    },
+    {
+      "name": "impact-bass-1.mp3",
+      "description": "低沉的冲击声",
+      "usage": "标题登场/重要转场",
+      "default_volume": 0.35,
+      "duration": "2.1s"
+    },
+    {
+      "name": "scroll-tick.mp3",
+      "description": "滚动滴答声",
+      "usage": "滚动过程中的环境音（可选）",
+      "default_volume": 0.15,
+      "duration": "0.1s"
+    }
+  ],
+  "copy_command": "cp -r <website-to-video-skill>/assets/sfx/ <project-dir>/sfx/"
+}

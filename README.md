@@ -12,6 +12,7 @@
 | **`bio-asset-generator`** | [`skills/bio-asset-generator`](./skills/bio-asset-generator/) | 专为儿童生物科普教育项目打造的全流程素材方案。涵盖物种研究、解剖学特征库、提示词模板、多角度视觉一致性锁定机制及结构化物种科普数据定义。 |
 | **`edge-tts`** | [`skills/edge-tts`](./skills/edge-tts/) | 基于微软 Edge Azure 神经网络大模型的高保真文本转语音。**零 API Key、零费用、零限流、秒级生成**，提供 400+ 多国语言极拟真音色，完美支持 Windows 10/11 跨平台。 |
 | **`gmi-tts`** | [`skills/gmi-tts`](./skills/gmi-tts/) | 基于 MiniMax / 海螺星野大模型的高品质情感语音合成。具备高表现力拟真语感，适合角色扮演、故事演播与高保真交互配音。 |
+| **`site-walkthrough-video`** | [`skills/site-walkthrough-video`](./skills/site-walkthrough-video/) | 网站用户旅程导览视频制作全流程。从首页开始模拟真实用户的滚动、点击、导航行为，最终进入目标页面展示内容。含完整长图拼接脚本、可复用 HTML 模板、edge-tts 语音封装，输出 1920×1080 MP4。 |
 
 ---
 
@@ -79,6 +80,14 @@ Copy-Item -Recurse -Force "skills\gmi-tts" "$HOME\.gemini\config\skills\"
 
 ---
 
+
+### 5. 网站导览视频制作 (\site-walkthrough-video\)
+- **环境要求**: Node.js (hyperframes), Python 3.10+ (numpy, Pillow), ffmpeg, edge-tts
+- **核心能力**: 7 步工作流（捕获→设计→分镜→语音→构建→渲染→验证），标准导航交互模式（下滚→上滚居中→光标→点击涟漪），多段截图精确拼接
+- **可复用模板**: \	emplates/nav-segment.html\（导航段）、\	emplates/detail-segment.html\（详情段）
+- **工具脚本**: \scripts/stitch_fullpage.py\（numpy 行匹配拼接）、\scripts/generate_vo.py\（edge-tts 封装）
+- **文档**: 详见 [\skills/site-walkthrough-video/SKILL.md\](./skills/site-walkthrough-video/SKILL.md)
+
 ## 📂 仓库目录结构
 
 ```text
@@ -89,7 +98,8 @@ fantasy-skills/
     ├── bio-asset-generator/           # 生物科普素材生成管线
     ├── edge-tts/                      # 微软高保真 Edge TTS
     ├── gmi-tts/                       # GMI 情感语音合成
-    └── nanobanana-image-gen/          # Gemini 多模态生图与编辑
+    ├── nanobanana-image-gen/          # Gemini 多模态生图与编辑
+    └── site-walkthrough-video/         # 网站用户旅程导览视频制作
 ```
 
 ---

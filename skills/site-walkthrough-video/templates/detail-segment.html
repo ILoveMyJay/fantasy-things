@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1920, height=1080" />
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<style>
+  /* ===== 品牌字体（按需替换） ===== */
+  @font-face {
+    font-family: "HeadFont";
+    src: url("capture/assets/fonts/HeadFont.woff2") format("woff2");
+    font-weight: 100 900; font-display: block;
+  }
+  @font-face {
+    font-family: "BodyFont";
+    src: url("capture/assets/fonts/BodyFont.woff2") format("woff2");
+    font-weight: 100 900; font-display: block;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #111; }
+
+  /* ===== Beat 容器（必须 position: absolute） ===== */
+  .beat {
+    position: absolute; inset: 0;
+    width: 1920px; height: 1080px;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; overflow: hidden;
+  }
+  #b01 { opacity: 1; }
+
+  /* ===== 通用样式 ===== */
+  .title {
+    font-family: "HeadFont", sans-serif;
+    font-size: 96px; font-weight: 700;
+    color: #1B4332;
+  }
+  .subtitle {
+    font-family: "BodyFont", sans-serif;
+    font-size: 32px; font-weight: 400;
+    color: #2D6A4F; margin-top: 8px;
+  }
+  .body-text {
+    font-family: "BodyFont", sans-serif;
+    font-size: 24px; font-weight: 400;
+    color: #444; line-height: 1.6;
+  }
+
+  /* ===== Beat 1：登场 ===== */
+  #b01 { background: #EFF6EE; flex-direction: column; }
+  #b01 .hero-img {
+    width: 800px; height: 500px; object-fit: cover;
+    border-radius: 24px; margin-bottom: 32px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.15);
+  }
+  #b01 .stats {
+    display: flex; gap: 48px; margin-top: 24px;
+  }
+  #b01 .stat {
+    text-align: center;
+  }
+  #b01 .stat .num {
+    font-family: "HeadFont", sans-serif;
+    font-size: 56px; font-weight: 700; color: #F4A261;
+  }
+  #b01 .stat .label {
+    font-family: "BodyFont", sans-serif;
+    font-size: 20px; color: #666; margin-top: 4px;
+  }
+
+  /* ===== Beat 2：图鉴/要点 ===== */
+  #b02 { background: #fff; flex-direction: column; }
+  #b02 .grid {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 20px; width: 1600px; margin-top: 40px;
+  }
+  #b02 .item {
+    text-align: center; opacity: 0;
+  }
+  #b02 .dot {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: #52B788; color: #fff;
+    font-family: "HeadFont", sans-serif;
+    font-size: 24px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 12px;
+  }
+  #b02 .item img {
+    width: 100%; height: 140px; object-fit: cover;
+    border-radius: 12px; margin-bottom: 8px;
+  }
+  #b02 .item .label {
+    font-family: "BodyFont", sans-serif;
+    font-size: 16px; color: #333; font-weight: 600;
+  }
+
+  /* ===== Beat 3：深潜 ===== */
+  #b03 { background: #1B4332; flex-direction: column; }
+  #b03 .macro-img {
+    width: 900px; height: 560px; object-fit: cover;
+    border-radius: 20px; position: relative;
+  }
+  #b03 .scan-line {
+    position: absolute; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, transparent, #52B788, transparent);
+    top: 0; opacity: 0.8;
+  }
+  #b03 .caption {
+    font-family: "HeadFont", sans-serif;
+    font-size: 42px; color: #fff; margin-top: 32px;
+  }
+  #b03 .detail {
+    font-family: "BodyFont", sans-serif;
+    font-size: 22px; color: rgba(255,255,255,0.8); margin-top: 12px;
+  }
+
+  /* ===== Beat 4：轮播 ===== */
+  #b04 { background: #EFF6EE; }
+  #b04 .card {
+    position: absolute; width: 700px;
+    background: #fff; border-radius: 20px;
+    padding: 40px; box-shadow: 0 8px 40px rgba(0,0,0,0.1);
+    opacity: 0;
+  }
+  #b04 .card img {
+    width: 100%; height: 350px; object-fit: cover;
+    border-radius: 12px; margin-bottom: 20px;
+  }
+  #b04 .card h3 {
+    font-family: "HeadFont", sans-serif;
+    font-size: 36px; color: #1B4332; margin-bottom: 8px;
+  }
+  #b04 .card p {
+    font-family: "BodyFont", sans-serif;
+    font-size: 20px; color: #555; line-height: 1.5;
+  }
+
+  /* ===== Beat 5：CTA ===== */
+  #b05 { background: linear-gradient(135deg, #1B4332, #2D6A4F); flex-direction: column; }
+  #b05 .cta-title {
+    font-family: "HeadFont", sans-serif;
+    font-size: 80px; color: #fff; margin-bottom: 32px;
+  }
+  #b05 .progress-wrap {
+    width: 600px; height: 12px; background: rgba(255,255,255,0.2);
+    border-radius: 9999px; overflow: hidden; margin-bottom: 40px;
+  }
+  #b05 .progress-fill {
+    height: 100%; width: 0%; background: #F4A261;
+    border-radius: 9999px;
+  }
+  #b05 .cta-btn {
+    font-family: "HeadFont", sans-serif;
+    font-size: 32px; font-weight: 700;
+    color: #1B4332; background: #F4A261;
+    padding: 20px 60px; border-radius: 9999px;
+    box-shadow: 0 4px 20px rgba(244,162,97,0.4);
+  }
+
+  /* ===== 字幕 ===== */
+  .captions {
+    position: absolute; bottom: 60px; left: 0; right: 0;
+    text-align: center; z-index: 100;
+  }
+  .cap {
+    display: none;
+    font-family: "BodyFont", sans-serif;
+    font-size: 32px; color: #fff; font-weight: 600;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    padding: 8px 24px;
+  }
+</style>
+</head>
+<body>
+
+<!--
+  详情段模板使用说明：
+  1. 替换图片 src 为你的素材
+  2. 修改标题、副标题、数据、图鉴条目等文字内容
+  3. 修改 BEATS 数组中的时长
+  4. 修改字幕内容和时间
+  5. 替换字体 @font-face 路径
+  6. 替换旁白音频 src
+-->
+
+<div data-composition-id="detail" data-width="1920" data-height="1080"
+     data-start="0" data-duration="TOTAL_DURATION"
+     style="position:relative;width:1920px;height:1080px;">
+
+  <!-- ===== Beat 1：登场 ===== -->
+  <div class="beat" id="b01">
+    <img class="hero-img" src="capture/assets/hero.jpg" alt="主图" />
+    <div class="title">标题文字</div>
+    <div class="subtitle">副标题 / 英文名称</div>
+    <div class="stats">
+      <div class="stat"><div class="num">数据1</div><div class="label">标签1</div></div>
+      <div class="stat"><div class="num">数据2</div><div class="label">标签2</div></div>
+      <div class="stat"><div class="num">数据3</div><div class="label">标签3</div></div>
+    </div>
+  </div>
+
+  <!-- ===== Beat 2：图鉴/要点 ===== -->
+  <div class="beat" id="b02">
+    <div class="title" style="font-size:56px;margin-bottom:0;">十大要点</div>
+    <div class="grid">
+      <div class="item"><div class="dot">1</div><img src="capture/assets/part-1.jpg" /><div class="label">要点1</div></div>
+      <div class="item"><div class="dot">2</div><img src="capture/assets/part-2.jpg" /><div class="label">要点2</div></div>
+      <div class="item"><div class="dot">3</div><img src="capture/assets/part-3.jpg" /><div class="label">要点3</div></div>
+      <div class="item"><div class="dot">4</div><img src="capture/assets/part-4.jpg" /><div class="label">要点4</div></div>
+      <div class="item"><div class="dot">5</div><img src="capture/assets/part-5.jpg" /><div class="label">要点5</div></div>
+      <!-- 可继续添加 -->
+    </div>
+  </div>
+
+  <!-- ===== Beat 3：深潜 ===== -->
+  <div class="beat" id="b03">
+    <div style="position:relative;">
+      <img class="macro-img" src="capture/assets/part-1.jpg" alt="特写" />
+      <div class="scan-line" id="scan"></div>
+    </div>
+    <div class="caption">核心要点标题</div>
+    <div class="detail">详细说明文字</div>
+  </div>
+
+  <!-- ===== Beat 4：轮播 ===== -->
+  <div class="beat" id="b04">
+    <div class="card" id="card1">
+      <img src="capture/assets/part-2.jpg" />
+      <h3>轮播标题1</h3>
+      <p>轮播说明文字1</p>
+    </div>
+    <div class="card" id="card2">
+      <img src="capture/assets/part-3.jpg" />
+      <h3>轮播标题2</h3>
+      <p>轮播说明文字2</p>
+    </div>
+    <!-- 可继续添加 -->
+  </div>
+
+  <!-- ===== Beat 5：CTA ===== -->
+  <div class="beat" id="b05">
+    <div class="cta-title">开始探索</div>
+    <div class="progress-wrap"><div class="progress-fill" id="prog"></div></div>
+    <div class="cta-btn">进入详情</div>
+  </div>
+
+  <!-- ===== 字幕 ===== -->
+  <div class="captions">
+    <span class="cap" data-start="0.5" data-end="3.0">第一句旁白</span>
+    <span class="cap" data-start="3.0" data-end="6.0">第二句旁白</span>
+    <!-- 按旁白时间添加 -->
+  </div>
+
+  <!-- ===== 旁白音频 ===== -->
+  <audio id="narration" src="narration.wav"
+         data-start="0" data-duration="NARRATION_LENGTH"
+         data-track-index="0" data-volume="1"></audio>
+
+  <!-- ===== SFX ===== -->
+  <audio src="sfx/chime.mp3" data-start="2.0" data-duration="1.0" data-track-index="10" data-volume="0.3"></audio>
+  <audio src="sfx/pop.mp3" data-start="6.0" data-duration="0.3" data-track-index="11" data-volume="0.4"></audio>
+
+</div>
+
+<script>
+window.__timelines = window.__timelines || {};
+const tl = gsap.timeline({ paused: true });
+
+// ===== 配置：beat 时长 =====
+const BEATS = [
+  { id: "#b01", at: 0,    dur: 6.0 },
+  { id: "#b02", at: 6.0,  dur: 6.0 },
+  { id: "#b03", at: 12.0, dur: 7.0 },
+  { id: "#b04", at: 19.0, dur: 6.0 },
+  { id: "#b05", at: 25.0, dur: 5.0 },
+];
+
+// ===== Beat 可见性 + 缩放脉冲 =====
+BEATS.forEach(function (b, i) {
+  var el = document.querySelector(b.id);
+  if (i !== 0) tl.set(el, { opacity: 1 }, b.at);
+  gsap.set(el, { scale: 1.012 });
+  tl.to(el, { scale: 1, duration: 0.25, ease: "power2.out" }, b.at);
+  if (i !== BEATS.length - 1) tl.set(el, { opacity: 0 }, b.at + b.dur);
+});
+
+// ===== Beat 1：登场动画 =====
+tl.fromTo("#b01 .hero-img", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6 }, 0.3);
+tl.fromTo("#b01 .title", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5 }, 0.6);
+tl.fromTo("#b01 .subtitle", { y: 15, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4 }, 0.9);
+tl.fromTo("#b01 .stat", { y: 15, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, stagger: 0.1 }, 1.2);
+
+// ===== Beat 2：图鉴圆点依次点亮 =====
+document.querySelectorAll("#b02 .item").forEach(function (item, i) {
+  const t = 6.0 + i * 0.4;
+  tl.fromTo(item, { scale: 0.8, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.3, ease: "back.out(2)" }, t);
+});
+
+// ===== Beat 3：深潜 + 扫描线 =====
+tl.fromTo("#b03 .macro-img", { scale: 1.1 }, { scale: 1.0, duration: 7.0, ease: "none" }, 12.0);
+tl.fromTo("#scan", { y: 0, opacity: 0.8 }, { y: 560, opacity: 0, duration: 4.0, ease: "power1.inOut" }, 12.5);
+tl.fromTo("#b03 .caption", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5 }, 13.0);
+tl.fromTo("#b03 .detail", { y: 15, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4 }, 13.4);
+
+// ===== Beat 4：轮播 =====
+const cards = ["#card1", "#card2"];
+cards.forEach(function (cardId, i) {
+  const t = 19.0 + i * 2.5;
+  tl.fromTo(cardId, { x: 200, opacity: 0 }, { x: 0, opacity: 1, duration: 0.4 }, t);
+  tl.to(cardId, { x: -200, opacity: 0, duration: 0.4 }, t + 2.1);
+});
+
+// ===== Beat 5：CTA =====
+tl.fromTo("#b05 .cta-title", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6 }, 25.3);
+tl.to("#prog", { width: "100%", duration: 3.0, ease: "power1.inOut" }, 25.8);
+tl.fromTo("#b05 .cta-btn", { scale: 0.8, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "back.out(2)" }, 27.0);
+
+// ===== 字幕时序 =====
+document.querySelectorAll(".cap").forEach(function (cap) {
+  const s = parseFloat(cap.dataset.start);
+  const e = parseFloat(cap.dataset.end);
+  tl.set(cap, { display: "inline" }, s);
+  tl.set(cap, { display: "none" }, e);
+});
+
+window.__timelines["detail"] = tl;
+</script>
+</body>
+</html>

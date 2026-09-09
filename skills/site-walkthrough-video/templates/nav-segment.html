@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1920, height=1080" />
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<style>
+  /* ===== 品牌字体（按需替换） ===== */
+  @font-face {
+    font-family: "HeadFont";
+    src: url("capture/assets/fonts/HeadFont.woff2") format("woff2");
+    font-weight: 100 900; font-display: block;
+  }
+  @font-face {
+    font-family: "BodyFont";
+    src: url("capture/assets/fonts/BodyFont.woff2") format("woff2");
+    font-weight: 100 900; font-display: block;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #111; }
+
+  /* ===== Beat 容器（必须 position: absolute） ===== */
+  .beat {
+    position: absolute; inset: 0;
+    width: 1920px; height: 1080px;
+    overflow: hidden; opacity: 0;
+  }
+
+  /* ===== 滚动视口 ===== */
+  .scroll-viewport {
+    position: absolute; inset: 0;
+    overflow: hidden;
+  }
+  .page-scroll {
+    position: absolute; top: 0; left: 0;
+    width: 1920px; height: auto;
+    will-change: transform;
+  }
+
+  /* ===== 鼠标光标 ===== */
+  .cursor {
+    position: absolute; left: 0; top: 0;
+    width: 36px; height: 36px;
+    z-index: 50; pointer-events: none;
+  }
+  .cursor svg { width: 100%; height: 100%; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.5)); }
+
+  /* ===== 点击涟漪 ===== */
+  .ripple {
+    position: absolute; width: 20px; height: 20px;
+    border-radius: 50%; border: 3px solid #F4A261;
+    transform: translate(-50%, -50%) scale(0);
+    z-index: 49; pointer-events: none;
+  }
+
+  /* ===== 滚动提示 ===== */
+  .scroll-indicator {
+    position: absolute; bottom: 30px; right: 40px;
+    background: rgba(27,67,50,0.85); backdrop-filter: blur(4px);
+    color: #fff; padding: 8px 18px; border-radius: 9999px;
+    font-family: "BodyFont", sans-serif; font-size: 15px; font-weight: 700;
+    z-index: 55; display: flex; align-items: center; gap: 8px;
+    opacity: 0; border: 1px solid rgba(82,183,136,0.3);
+  }
+  .scroll-indicator .arrow {
+    display: inline-block; animation: bounce 0.8s ease-in-out infinite;
+  }
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(4px); }
+  }
+
+  /* ===== 步骤徽章 ===== */
+  .step-badge {
+    position: absolute; top: 40px; right: 40px;
+    background: rgba(27,67,50,0.92); backdrop-filter: blur(6px);
+    color: #fff; padding: 12px 24px; border-radius: 9999px;
+    font-family: "BodyFont", sans-serif; font-size: 18px; font-weight: 700;
+    z-index: 60; display: flex; align-items: center; gap: 10px;
+    border: 1px solid rgba(82,183,136,0.4);
+  }
+  .step-badge .dot {
+    width: 10px; height: 10px; border-radius: 50%; background: #F4A261;
+    animation: blink 1s ease-in-out infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+  /* ===== 过渡 beat（推镜） ===== */
+  #beat-last .zoom-img {
+    width: 100%; height: 100%; object-fit: cover;
+    position: absolute; top: 0; left: 0;
+  }
+</style>
+</head>
+<body>
+
+<!--
+  导航段模板使用说明：
+  1. 替换每个 beat 中的 page-scroll img src 为你的页面截图
+  2. 修改 MAX_SCROLL_1, MAX_SCROLL_2 为实际最大滚动距离
+  3. 修改 TARGET_Y_1, TARGET_Y_2 为目标卡片居中时的页面偏移
+  4. 修改 CARD_X_1, CARD_Y_1 等为目标卡片中心坐标
+  5. 修改 B1, B2, B3 为各 beat 时长
+  6. 修改 step-badge 文字
+  7. 替换字体 @font-face 路径
+-->
+
+<div id="root" data-composition-id="nav" data-start="0" data-duration="TOTAL_DURATION"
+     data-width="1920" data-height="1080"
+     style="position:relative;width:1920px;height:1080px;">
+
+  <!-- ===== BEAT 1：第一个页面 → 滚动 → 点击 ===== -->
+  <div id="beat1" class="beat" style="opacity:1;">
+    <div class="scroll-viewport">
+      <img class="page-scroll" id="page1" src="capture/assets/page-1.png" alt="页面1" />
+    </div>
+    <div class="cursor" id="cur1">
+      <svg viewBox="0 0 24 24" fill="white" stroke="#1B4332" stroke-width="1.5">
+        <path d="M5 3l14 8-6 1.5L8 19z"/>
+      </svg>
+    </div>
+    <div class="ripple" id="rip1" style="left:CARD_X_1px;top:CARD_Y_1px;"></div>
+    <div class="scroll-indicator" id="scroll1"><span class="arrow">↓</span> 向下滚动浏览</div>
+    <div class="step-badge"><span class="dot"></span>步骤 1 / 3 · 页面1</div>
+  </div>
+
+  <!-- ===== BEAT 2：第二个页面 → 滚动 → 点击 ===== -->
+  <div id="beat2" class="beat">
+    <div class="scroll-viewport">
+      <img class="page-scroll" id="page2" src="capture/assets/page-2-full.png" alt="页面2" />
+    </div>
+    <div class="cursor" id="cur2">
+      <svg viewBox="0 0 24 24" fill="white" stroke="#1B4332" stroke-width="1.5">
+        <path d="M5 3l14 8-6 1.5L8 19z"/>
+      </svg>
+    </div>
+    <div class="ripple" id="rip2" style="left:CARD_X_2px;top:CARD_Y_2px;"></div>
+    <div class="scroll-indicator" id="scroll2"><span class="arrow">↓</span> 向下滚动浏览</div>
+    <div class="step-badge"><span class="dot"></span>步骤 2 / 3 · 页面2</div>
+  </div>
+
+  <!-- ===== BEAT 3：过渡推镜到目标页 ===== -->
+  <div id="beat3" class="beat">
+    <img class="zoom-img" src="capture/assets/target-hero.jpg" alt="目标页主图" />
+    <div class="step-badge"><span class="dot"></span>步骤 3 / 3 · 目标页</div>
+  </div>
+
+  <!-- ===== SFX ===== -->
+  <audio id="sfx-click1" src="sfx/click.mp3" data-start="CLICK_TIME_1" data-duration="0.3" data-track-index="10" data-volume="0.5"></audio>
+  <audio id="sfx-click2" src="sfx/click.mp3" data-start="CLICK_TIME_2" data-duration="0.3" data-track-index="11" data-volume="0.5"></audio>
+  <audio id="sfx-whoosh1" src="sfx/whoosh-short.mp3" data-start="WHOOSH_TIME_1" data-duration="0.57" data-track-index="12" data-volume="0.3"></audio>
+  <audio id="sfx-whoosh2" src="sfx/whoosh-short.mp3" data-start="WHOOSH_TIME_2" data-duration="0.57" data-track-index="13" data-volume="0.3"></audio>
+
+</div>
+
+<script>
+window.__timelines = window.__timelines || {};
+const tl = gsap.timeline({ paused: true });
+
+// ===== 配置区：修改这些值 =====
+const B1 = 6.0;          // Beat 1 时长
+const B2 = 10.0;         // Beat 2 时长
+const B3 = 2.5;          // Beat 3 时长
+const MAX_SCROLL_1 = -55;    // 页面1最大滚动距离（负值）
+const MAX_SCROLL_2 = -2787;  // 页面2最大滚动距离（负值）
+const TARGET_Y_1 = 0;        // 页面1目标卡片居中时的偏移
+const TARGET_Y_2 = -542;     // 页面2目标卡片居中时的偏移
+const CARD_X_1 = 1270;       // 页面1目标卡片中心 X
+const CARD_Y_1 = 410;        // 页面1目标卡片中心 Y
+const CARD_X_2 = 480;        // 页面2目标卡片中心 X
+const CARD_Y_2 = 540;        // 页面2目标卡片中心 Y
+const SCROLL_DOWN_TIME = 6.5; // 下滚时长（秒，建议 5-7）
+const SCROLL_UP_TIME = 3.0;   // 上滚时长（秒，建议 2.5-3.5）
+const PAUSE_TIME = 0.8;       // 底部停留时长
+
+const T1 = 0, T2 = B1, T3 = B1 + B2;
+
+// ===== Beat 可见性 =====
+var beats = [
+  { id: "#beat1", at: 0, dur: B1 },
+  { id: "#beat2", at: T2, dur: B2 },
+  { id: "#beat3", at: T3, dur: B3 },
+];
+beats.forEach(function (b, i) {
+  var el = document.querySelector(b.id);
+  if (i !== 0) tl.set(el, { opacity: 1 }, b.at);
+  if (i !== beats.length - 1) tl.set(el, { opacity: 0 }, b.at + b.dur);
+});
+
+// ===== 通用：单个页面的滚动→点击流程 =====
+function buildScrollClickBeat(pageId, curId, ripId, scrollId, maxScroll, targetY, cardX, cardY, startTime, scrollDownTime, pauseTime, scrollUpTime) {
+  const t = startTime;
+  tl.set(pageId, { y: 0 }, t);
+  tl.set(curId, { x: 200, y: 900 }, t);
+
+  // 滚动提示出现
+  tl.to(scrollId, { opacity: 1, duration: 0.3 }, t + 0.2);
+
+  // 匀速向下滚动（ease: none 防止闪烁）
+  tl.to(pageId, { y: maxScroll, duration: scrollDownTime, ease: "none" }, t + 0.3);
+
+  // 底部停留（不写 tween）
+
+  // 提示切换
+  tl.set(scrollId, { innerHTML: '<span class="arrow">↑</span> 向上滚动定位' }, t + 0.3 + scrollDownTime + pauseTime * 0.5);
+
+  // 向上滚动居中
+  tl.to(pageId, { y: targetY, duration: scrollUpTime, ease: "power1.inOut" }, t + 0.3 + scrollDownTime + pauseTime);
+
+  // 提示消失
+  const scrollUpEnd = t + 0.3 + scrollDownTime + pauseTime + scrollUpTime;
+  tl.to(scrollId, { opacity: 0, duration: 0.3 }, scrollUpEnd);
+
+  // 光标移入
+  tl.to(curId, { x: cardX - 18, y: cardY - 18, duration: 0.7, ease: "power2.inOut" }, scrollUpEnd);
+
+  // Hover
+  tl.to(curId, { x: cardX, y: cardY, duration: 0.3, ease: "sine.inOut" }, scrollUpEnd + 0.8);
+
+  // 点击涟漪
+  const clickTime = scrollUpEnd + 1.1;
+  tl.to(ripId, { scale: 8, opacity: 0, duration: 0.6, ease: "power2.out" }, clickTime);
+
+  // 淡出
+  tl.to("#beat" + pageId.replace("#page", ""), { opacity: 0, duration: 0.4 }, clickTime + 0.3);
+
+  return clickTime;
+}
+
+// ===== Beat 1 =====
+const click1 = buildScrollClickBeat("#page1", "#cur1", "#rip1", "#scroll1",
+  MAX_SCROLL_1, TARGET_Y_1, CARD_X_1, CARD_Y_1, 0, 2.0, 0.5, 1.5);
+
+// ===== Beat 2 =====
+const click2 = buildScrollClickBeat("#page2", "#cur2", "#rip2", "#scroll2",
+  MAX_SCROLL_2, TARGET_Y_2, CARD_X_2, CARD_Y_2, T2, SCROLL_DOWN_TIME, PAUSE_TIME, SCROLL_UP_TIME);
+
+// ===== Beat 3：推镜过渡 =====
+tl.fromTo("#beat3 .zoom-img", { scale: 1.15 }, { scale: 1.0, duration: B3, ease: "sine.inOut" }, T3);
+
+window.__timelines["nav"] = tl;
+</script>
+</body>
+</html>
