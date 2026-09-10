@@ -13,6 +13,7 @@
 | **`edge-tts`** | [`skills/edge-tts`](./skills/edge-tts/) | 基于微软 Edge Azure 神经网络大模型的高保真文本转语音。**零 API Key、零费用、零限流、秒级生成**，提供 400+ 多国语言极拟真音色，完美支持 Windows 10/11 跨平台。 |
 | **`gmi-tts`** | [`skills/gmi-tts`](./skills/gmi-tts/) | 基于 MiniMax / 海螺星野大模型的高品质情感语音合成。具备高表现力拟真语感，适合角色扮演、故事演播与高保真交互配音。 |
 | **`site-walkthrough-video`** | [`skills/site-walkthrough-video`](./skills/site-walkthrough-video/) | 网站用户旅程导览视频制作全流程。从首页开始模拟真实用户的滚动、点击、导航行为，最终进入目标页面展示内容。含完整长图拼接脚本、可复用 HTML 模板、edge-tts 语音封装，输出 1920×1080 MP4。 |
+| **`wechat-pay`** | [`skills/wechat-pay`](./skills/wechat-pay/) | 微信支付 Native 扫码支付完整接入方案。**零 npm 依赖**，纯 Web Crypto API 实现 RSA-SHA256 签名与 AES-256-GCM 解密，完美适配 Cloudflare Workers/Pages Functions 运行时。含工具库、下单/查单/回调三个接口模板、数据库 DDL 及完整知识文档。 |
 
 ---
 
@@ -99,7 +100,18 @@ fantasy-skills/
     ├── edge-tts/                      # 微软高保真 Edge TTS
     ├── gmi-tts/                       # GMI 情感语音合成
     ├── nanobanana-image-gen/          # Gemini 多模态生图与编辑
-    └── site-walkthrough-video/         # 网站用户旅程导览视频制作
+    ├── site-walkthrough-video/        # 网站用户旅程导览视频制作
+    └── wechat-pay/                    # 微信支付 Native 扫码接入
+        ├── SKILL.md                   # 激活条件 + 6步工作流
+        ├── references/
+        │   ├── wxpay-concepts.md      # 核心知识：密钥体系、单号、流程
+        │   └── wxpay-api-guide.md     # API参数、错误码、算法实现
+        └── templates/
+            ├── _wxpay.ts              # Web Crypto API 工具库
+            ├── create.ts              # 下单接口
+            ├── query.ts               # 查单接口 + grantMembership
+            ├── notify.ts              # 回调通知处理
+            └── orders.sql             # 数据库订单表 DDL
 ```
 
 ---
