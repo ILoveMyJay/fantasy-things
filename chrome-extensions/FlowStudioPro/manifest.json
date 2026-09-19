@@ -1,0 +1,40 @@
+{
+   "action": {
+      "default_icon": {
+         "128": "icons/ICON128.png",
+         "16": "icons/ICON16.png",
+         "48": "icons/ICON48.png"
+      },
+      "default_popup": "popup/popup.html",
+      "default_title": "Flow Studio Pro - AI影视生图制片厂"
+   },
+   "background": {
+      "service_worker": "background/background.js"
+   },
+   "content_scripts": [ {
+      "js": [ "core/page-bridge.js" ],
+      "matches": [ "*://flow.google.com/*" ],
+      "run_at": "document_end",
+      "world": "MAIN"
+   }, {
+      "all_frames": false,
+      "js": [ "core/flow-automation.js", "core/filename.js", "content-scripts/flow-content.js" ],
+      "matches": [ "*://flow.google.com/*" ],
+      "run_at": "document_end"
+   } ],
+   "description": "Google Flow 批量提示词生图/生视频、剧本智能分镜拆解与6槽位角色一致性制片厂自动化工具",
+   "host_permissions": [ "*://flow.google.com/*", "https://generativelanguage.googleapis.com/*" ],
+   "icons": {
+      "128": "icons/ICON128.png",
+      "16": "icons/ICON16.png",
+      "48": "icons/ICON48.png"
+   },
+   "manifest_version": 3,
+   "name": "Flow Studio Pro - AI影视生图制片厂",
+   "permissions": [ "storage", "tabs", "activeTab", "sidePanel", "downloads", "scripting", "unlimitedStorage", "debugger" ],
+   "short_name": "FlowStudioPro",
+   "side_panel": {
+      "default_path": "sidepanel/sidepanel.html"
+   },
+   "version": "2.0.0"
+}

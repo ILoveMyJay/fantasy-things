@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flow Studio Pro</title>
+  <style>
+    body {
+      width: 220px;
+      padding: 14px;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      background: #f7f9fc;
+    }
+    .btn-open {
+      width: 100%;
+      min-height: 44px;
+      padding: 13px 16px;
+      background: #0f172a;
+      color: #ffffff;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+    }
+    .btn-open:hover {
+      background: #1d4ed8;
+      transform: translateY(-1px);
+    }
+    .btn-open:focus-visible {
+      outline: 2px solid #2563eb;
+      outline-offset: 2px;
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.18);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .btn-open {
+        transition: none;
+      }
+      .btn-open:hover {
+        transform: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <button id="btnOpenSidePanel" class="btn-open">打开制片厂侧边栏</button>
+  <script src="popup.js"></script>
+</body>
+</html>

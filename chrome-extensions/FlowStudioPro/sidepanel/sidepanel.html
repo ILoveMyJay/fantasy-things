@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flow Studio Pro</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+
+<body class="light-theme">
+
+  <div id="main-screen" class="container">
+
+    <!-- ========== TOP HEADER ========== -->
+    <div class="tabs-row">
+      <input type="text" id="controlProjectName" class="input header-project-input"
+        placeholder="输入项目名称（将作为本地下载保存的文件夹名）"
+        title="输入项目名称（将作为本地下载保存的文件夹名）" aria-label="项目名称">
+      <button type="button" id="btnOpenSettings" class="settings-icon-btn" title="设置" aria-label="打开设置"
+        aria-pressed="false">
+        <span class="tab-ico icon-gear" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <!-- ========== TOP STUDIO MODE TABS (Flow Studio Pro) ========== -->
+    <div class="studio-mode-bar" id="studioModeBar" role="tablist" aria-label="Studio Mode">
+      <button type="button" class="studio-tab-btn active" data-studio-mode="textToImage" role="tab" aria-selected="true" title="Prompt 生图与视频">
+        <span class="studio-tab-icon">⚡</span>
+        <span class="studio-tab-label">Prompt 批量</span>
+      </button>
+      <button type="button" class="studio-tab-btn" data-studio-mode="scriptToImage" role="tab" aria-selected="false" title="长剧本/故事一键切分分镜镜头">
+        <span class="studio-tab-icon">🎬</span>
+        <span class="studio-tab-label">剧本分镜 (PRO)</span>
+      </button>
+      <button type="button" class="studio-tab-btn" data-studio-mode="factory" role="tab" aria-selected="false" title="制片厂流水线：剧本→批量生图→批量图生视频">
+        <span class="studio-tab-icon">🏭</span>
+        <span class="studio-tab-label">全自动制片厂</span>
+      </button>
+    </div>
+
+    <!-- ============================== -->
+    <!-- SETTINGS TAB                    -->
+    <!-- ============================== -->
+    <div id="content-settings" class="content settings-view hidden">
+      <div class="view-head">
+        <button type="button" id="btnCloseSettings" class="settings-back-btn" title="返回"
+          aria-label="返回工作流">
+          <span class="settings-back-arrow" aria-hidden="true">&larr;</span> 返回
+        </button>
+        <div class="view-head-text">
+          <h2>设置</h2>
+        </div>
+        <div class="view-head-actions">
+          <div class="theme-toggle" role="group" aria-label="Theme">
+            <button type="button" class="theme-ico-btn active" data-theme="light" title="明亮模式" aria-label="明亮模式"
+              aria-pressed="true">
+              <span class="theme-ico sun" aria-hidden="true"></span>
+            </button>
+            <button type="button" class="theme-ico-btn" data-theme="dark" title="暗黑模式" aria-label="暗黑模式"
+              aria-pressed="false">
+              <span class="theme-ico moon" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-hub">
+        <div class="settings-panel" data-settings-content="basic">
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <span class="section-title">基础设置</span>
+              <span class="settings-card-hint">存储与默认参数</span>
+            </div>
+            <div class="section">
+              <label class="label" for="downloadFolder">保存文件夹名称（位于「下载」目录下）</label>
+              <input type="text" id="downloadFolder" class="input" placeholder="AI4Next" value="AI4Next">
+            </div>
+            <div class="section">
+              <label class="label" for="promptSeparatorInput">提示词分隔符</label>
+              <input type="text" id="promptSeparatorInput" class="input" placeholder="###" value="###" maxlength="24">
+              <span class="info-text">用于「+」按钮插入与批量任务拆分。提示词中的 @ 符号保留用于角色与素材引用。</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-panel" data-settings-content="automation">
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <span class="section-title">自动化控制</span>
+              <span class="settings-card-hint">任务提交延时</span>
+            </div>
+            <div class="section">
+              <span class="label">提示词提交间隔（秒）</span>
+              <div class="stepper settings-stepper">
+                <button class="stepper-btn" id="delayMinus">−</button>
+                <span class="stepper-value" id="delayValue">30</span>
+                <button class="stepper-btn" id="delayPlus">+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-panel" data-settings-content="gemini">
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <span class="section-title">Gemini AI 智能分镜引擎</span>
+              <span class="settings-card-hint">长剧本拆解分镜与角色提取</span>
+            </div>
+            <div class="section">
+              <label class="label" for="geminiApiKeyInput">GEMINI API KEY（免费 / 付费均可）</label>
+              <input type="password" id="geminiApiKeyInput" class="input" placeholder="AIzaSy... (输入您的 Gemini 免费或付费密钥)" autocomplete="off">
+              <span class="info-text">长剧本分析、智能分镜拆解与角色一致性必备。<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--mint-dark,#0d9488);font-weight:600;text-decoration:underline;">获取免费 Key ↗</a></span>
+            </div>
+            <div class="section">
+              <label class="label" for="geminiModelSelect">剧本分析大模型</label>
+              <select id="geminiModelSelect" class="input">
+                <option value="gemini-3-flash-preview" selected>Gemini 3 Flash (极速且聪明 — 强烈推荐)</option>
+                <option value="gemini-3.1-flash-lite-preview">Gemini 3.1 Flash Lite (超高速度)</option>
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro (深度电影级推理)</option>
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash (标准版)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-actions">
+        <span class="settings-save-state" id="settingsSaveState">已自动保存</span>
+        <button class="btn btn-secondary" id="resetSettingsBtn">恢复默认设置</button>
+      </div>
+
+    </div>
+
+    <!-- ============================== -->
+    <!-- CONTROL TAB                     -->
+    <!-- ============================== -->
+    <div id="content-control" class="content">
+
+      <!-- Shared asset pool (image + video reference images) -->
+      <div class="section" id="section-upload-assets">
+        <div class="section-header">
+          <span class="section-title">上传参考素材 (ASSETS)</span>
+          <span class="asset-count hidden" id="assetCount">0 张图片</span>
+        </div>
+        <p class="info-text i2v-guide">选填 — 可以为每张图片命名，并在提示词中使用 <b>@名称</b> 引用素材。</p>
+        <div class="drop-zone" id="dropZone" role="button" tabindex="0"
+          aria-label="Upload images: click, press Enter, or drop image files here">
+          <div class="drop-zone-plus" aria-hidden="true">+</div>
+          <div class="drop-zone-text" id="dropZoneText">将图片拖放到此处，或点击选择图片</div>
+        </div>
+        <div class="upload-btn-row">
+          <button type="button" class="upload-option-btn" id="btnUploadFolder">选择整个文件夹</button>
+        </div>
+        <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
+        <input type="file" id="imageInput" accept="image/*" multiple hidden>
+
+        <div class="image-preview-grid" id="imagePreview"></div>
+        <button class="clear-btn hidden" id="clearImagesBtn">清空素材</button>
+      </div>
+
+      <!-- 새 프로젝트 (모든 모드 공통 — 첫 시작·리셋용, Gemini API 호출 없음) -->
+      <div class="section section-new-project-top hidden">
+        <button type="button" id="btn-new-project-top" class="btn btn-outline btn-large">新建项目</button>
+      </div>
+
+      <!-- ===== Mode-Specific Input ===== -->
+
+      <!-- Script Mode Input -->
+      <div class="section hidden" id="input-scriptToImage">
+        <span class="section-title">剧本 / 故事文本输入</span>
+        <textarea id="scriptInput" class="textarea" rows="6"
+          placeholder="在此输入长剧本或故事小说（最长支持约1小时体量）"></textarea>
+        <div class="button-row button-row-3 script-actions">
+          <button type="button" id="btn-script-edit" class="btn btn-secondary btn-sm">编辑</button>
+          <button type="button" id="btn-script-del" class="btn btn-secondary btn-sm">清空</button>
+          <button type="button" id="btn-script-save" class="btn btn-secondary btn-sm">保存</button>
+        </div>
+
+        <!-- ========== CUSTOM CHARACTER REFERENCES (PRO) ========== -->
+        <span class="section-title custom-char-refs-label">
+          <span>自定义角色一致性参考槽 (CCR)</span>
+          <span class="badge-pro">PRO</span>
+          <span class="badge-optional">选填</span>
+        </span>
+        <!-- 사용 체크박스 + 설명 박스 (프로젝트명 입력박스와 동일 스타일) -->
+        <div class="custom-char-refs-toggle-box">
+          <div class="custom-char-refs-toggle-row">
+            <input type="checkbox" id="useCustomCharRefsCheckbox"
+              style="width:16px;height:16px;cursor:pointer;accent-color:#666;">
+            <label for="useCustomCharRefsCheckbox" class="custom-char-refs-toggle-label">启用角色锁定</label>
+          </div>
+          <p class="custom-char-refs-toggle-desc">
+            <span>使用您预先生成的角色参考图与提示词。<br>
+            未勾选时，将由 AI 自动从剧本推断生成角色。</span>
+          </p>
+        </div>
+
+        <div class="custom-char-refs-section hidden" id="customCharRefsSection">
+          <div class="brand-profile-toolbar">
+            <button type="button" id="saveBrandBtn" class="btn btn-secondary btn-sm">保存角色库</button>
+            <button type="button" id="loadBrandBtn" class="btn btn-secondary btn-sm">加载角色库</button>
+            <button type="button" id="exportBrandsBtn" class="btn btn-secondary btn-sm"
+              title="将所有保存的角色库导出为 JSON 文件">导出角色库 JSON</button>
+            <button type="button" id="importBrandsBtn" class="btn btn-secondary btn-sm"
+              title="从 JSON 文件导入角色库">导入角色库 JSON</button>
+            <button type="button" id="clearAllCustomRefsBtn" class="btn btn-secondary btn-sm">清空全部槽位</button>
+            <input type="file" id="brandImportFileInput" accept="application/json,.json" style="display:none">
+          </div>
+
+          <div class="custom-ref-grid" id="customRefGrid">
+            <!-- 6 slots: MCR, SC1~SC5 (JS에서 동적 생성) -->
+          </div>
+
+          <p class="info-text custom-char-refs-help">
+            <span>拖入或点击上传角色图，并粘贴生成该图的原提示词</span><br>
+            <span>Gemini 将直接锁定该角色形象，不再重新生成</span><br>
+            <span>支持部分上传 — 混合模式将以相同风格自动补全其余角色</span>
+          </p>
+        </div>
+        <!-- ========== /CUSTOM CHARACTER REFERENCES ========== -->
+
+        <span class="label">全局导演指示 / 特殊视觉要求 (选填)</span>
+        <textarea id="userDirections" class="textarea" rows="2"
+          placeholder="例如：赛博朋克霓虹光影、水墨古风、太空深空背景、特定服饰景别等..."></textarea>
+        <span class="info-text">在此指定特定的服装、光影基调、特定道具或世界观背景。</span>
+
+        <!-- ========== SCRIPT SPLIT MODE (PRO 2.0) ========== -->
+        <span class="label">剧本分镜拆解算法</span>
+        <select id="splitMode" class="input">
+          <option value="giseungjeongyeol" selected>起承转合均匀切分 (自定义镜头数)</option>
+          <option value="sentence">单句切分 (适合 Shorts / 短视频)</option>
+          <option value="paragraph">段落切分 (适合中篇故事与绘本)</option>
+          <option value="semantic">语义情节切分 (适合长篇小说与剧本)</option>
+          <option value="lyrics">MV 歌词拆分 (适合音乐视频)</option>
+        </select>
+        <span class="info-text">仅均匀切分支持手动指定镜头数。其余模式由 AI 根据文本长度、情节节奏自适应决定。</span>
+        <!-- ========== /SCRIPT SPLIT MODE ========== -->
+
+        <!-- ========== MUSIC OPTIONS (lyrics mode only) ========== -->
+        <div id="musicOptionsGroup" class="hidden"
+          style="margin-top:12px;padding:12px 14px;background:rgba(74,222,128,0.06);border-left:3px solid #4ade80;border-radius:6px;">
+          <span class="label">音乐流派风格</span>
+          <select id="musicGenre" class="input">
+            <option value="cinematic_ballad" selected>💎 电影感流行抒情 (Cinematic Ballad)</option>
+            <option value="korean_traditional">🏯 东方古典国风 (Oriental Traditional)</option>
+            <option value="hiphop_rap">🎤 嘻哈说唱 (Hip-Hop/Rap)</option>
+            <option value="rnb_soul">🌃 节奏布鲁斯都市灵魂 (R&B/Soul)</option>
+            <option value="indie_folk">🎹 独立民谣清音 (Indie/Folk)</option>
+            <option value="edm_dance">⚡ 电子舞曲律动 (EDM/Dance)</option>
+            <option value="rock_alternative">🎸 摇滚流行独立 (Rock/Alternative)</option>
+            <option value="trot">🎤 演歌与轻音乐 (Adult Contemporary)</option>
+            <option value="children_fantasy">🎨 童话童趣幻想 (Children/Fantasy)</option>
+          </select>
+
+          <span class="label" style="margin-top:10px;">副歌高潮视觉变奏档位</span>
+          <select id="hookVariation" class="input">
+            <option value="low">⚫⚪⚪ 低 (保持主体画面微变)</option>
+            <option value="medium" selected>⚫⚫⚪ 中 (光影氛围与机位角度变化)</option>
+            <option value="high">⚫⚫⚫ 高 (构图场景与季节剧烈变奏)</option>
+          </select>
+
+          <label class="toggle-row" style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;">
+            <input type="checkbox" id="applyNarrativeArc" checked>
+            <span>应用起承转合四幕式情绪曲线</span>
+          </label>
+          <span class="info-text">在整首歌词的镜头推进中融入四幕式情绪张力</span>
+        </div>
+        <!-- ========== /MUSIC OPTIONS ========== -->
+
+        <span class="label">期望生成的分镜镜头数量</span>
+        <select id="numPrompts" class="input">
+          <option value="4" selected>4</option>
+          <option value="10">10</option>
+          <option value="15">15</option>
+          <option value="20">20</option>
+          <option value="25">25</option>
+          <option value="30">30</option>
+          <option value="40">40</option>
+          <option value="50">50</option>
+          <option value="60">60</option>
+          <option value="70">70</option>
+          <option value="74">74</option>
+          <option value="80">80</option>
+          <option value="100">100</option>
+          <option value="120">120</option>
+          <option value="150">150</option>
+          <option value="200">200</option>
+        </select>
+        <span class="info-text">AI 将自动拆解剧本故事，并生成对应数量的独立镜头提示词。</span>
+
+        <!-- AI 프롬프트 생성 버튼 그룹 -->
+        <div class="prompt-gen-buttons">
+          <button class="btn btn-primary btn-large" id="btn-generate-prompts">✨ 智能生成分镜提示词</button>
+          <button class="btn btn-full-auto btn-large" id="btn-full-auto"
+            title="全自动流水线：剧本拆分 → 批量生图 → 批量图生视频">▶▶▶ 全自动制片流水线</button>
+        </div>
+
+        <!-- 업그레이드 모달: 버튼 하단 인라인 (팩토리 횟수 소진 시 표시) -->
+        <div id="password-screen" class="password-screen upgrade-modal-inline hidden">
+          <div class="upgrade-modal-wrap">
+            <div class="upgrade-modal modal">
+              <button type="button" id="btn-close-modal-x" class="upgrade-modal-close" aria-label="Close" title="Close">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"
+                  stroke-linecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+              <div class="hero">
+                <div class="hero-badge">ACCESS KEY</div>
+                <div class="hero-title" id="t-title">Usage limit reached</div>
+                <div class="hero-sub" id="t-sub">Enter your access key to continue this workflow.</div>
+              </div>
+              <div id="upgrade-info" class="limit-notice">
+                <div class="limit-dot"></div>
+                <span class="limit-text" id="t-limit">This mode needs an active access key.</span>
+              </div>
+              <div class="price-features hidden">
+                <div class="price-feature">
+                  <div class="check">✓</div><span id="f1">Access enabled workflows</span>
+                </div>
+                <div class="price-feature">
+                  <div class="check">✓</div><span id="f2">Prompt and media automation</span>
+                </div>
+                <div class="price-feature">
+                  <div class="check">✓</div><span id="f3">Custom character references</span>
+                </div>
+                <div class="price-feature">
+                  <div class="check">✓</div><span id="f4">Project workflow tools</span>
+                </div>
+              </div>
+              <button type="button" id="btn-purchase-pro" class="btn-primary hidden">Open access page</button>
+              <div id="payment-guide" class="payment-guide hidden">
+                <span id="payment-guide-text">Enter your access key below to activate.</span>
+              </div>
+              <div class="divider">
+                <div class="divider-line"></div>
+                <span class="divider-text" id="t-divider">Have an access key?</span>
+                <div class="divider-line"></div>
+              </div>
+              <div class="password-input-wrapper">
+                <input type="password" id="pw-input" class="key-input" placeholder="Enter license key"
+                  autocomplete="off">
+                <button type="button" id="pw-toggle" class="password-toggle" tabindex="-1" aria-label="Show password">
+                  <svg class="eye-off" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <path
+                      d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg>
+                  <svg class="eye-on hidden" viewBox="0 0 24 24" width="18" height="18" fill="none"
+                    stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+              </div>
+              <button type="button" id="btn-unlock" class="btn-secondary">
+                <span>Activate</span>
+              </button>
+              <p id="pw-error" class="password-error hidden">Wrong password</p>
+              <p id="pw-loading" class="password-loading hidden">
+                <span class="pw-spinner"></span>
+                <span>Verifying...</span>
+              </p>
+              <div class="modal-footer">
+                <button type="button" id="btn-close-upgrade" class="footer-link upgrade-footer-back"
+                  style="background:none;border:none;padding:0;cursor:pointer;font:inherit;">
+                  <span id="t-back">Close</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 생성된 프롬프트 섹션 (Whisk 동일) -->
+      <div id="generatedPromptsSection" class="section hidden">
+        <div class="success-badge">
+          ✅ <span>分镜提示词生成完毕！</span> (<span id="generatedCount">0</span>)
+        </div>
+        <label class="label" for="generatedPromptsText">已生成的分镜清单</label>
+        <textarea id="generatedPromptsText" class="textarea textarea-large" rows="12" readonly></textarea>
+        <div class="button-row button-row-3">
+          <button id="btnCopyPrompts" class="btn btn-secondary btn-sm">复制清单</button>
+          <button id="btnEditPrompts" class="btn btn-secondary btn-sm">编辑</button>
+          <button id="btnDownloadPrompts" class="btn btn-secondary btn-sm">⬇️ 导出文本</button>
+        </div>
+        <button id="btnResumeGeneration" class="btn btn-warning btn-large hidden" style="width:100%;margin-top:8px;">
+          🔄 <span>继续生成未完分镜</span>
+        </button>
+      </div>
+
+      <!-- Text Prompt Input (textToImage / textToVideo) -->
+      <div class="section hidden" id="input-textPrompt">
+        <span class="section-title">提示词批量输入</span>
+        <p class="info-text prompt-splitter-hint">多组提示词请用独占一行的 <code>###</code> 或换行进行分隔。 <span
+            class="prompt-splitter-shortcut">快捷键：<kbd id="promptSplitterShortcutKbd">Ctrl + ↵</kbd></span></p>
+        <div class="mention-list hidden" id="promptMentionList"></div>
+        <div class="prompt-input-shell">
+          <div class="prompt-mention-highlights" id="promptMentionHighlights" aria-hidden="true"></div>
+          <textarea id="promptInput" class="textarea" rows="8"
+            placeholder="Hero walking through a rainy neon street&#10;&#10;Product shot of a matte black smart device&#10;&#10;Hero inside a minimal sci-fi studio"></textarea>
+          <button type="button" id="btn-prompt-splitter" class="prompt-splitter-btn"
+            aria-label="Insert prompt separator" data-tooltip="在光标处插入 ### 分隔符">
+            <span aria-hidden="true">+</span>
+          </button>
+        </div>
+        <div class="prompt-flow-menu" aria-label="Flow generation settings">
+          <div class="prompt-flow-tabs" role="tablist" aria-label="Generation type">
+            <button type="button" class="prompt-flow-tab active" data-prompt-mode="textToImage" role="tab"
+              aria-selected="true">
+              <span class="prompt-flow-icon prompt-flow-icon-image" aria-hidden="true"></span>
+              <span>图片</span>
+            </button>
+            <button type="button" class="prompt-flow-tab" data-prompt-mode="textToVideo" role="tab"
+              aria-selected="false">
+              <span class="prompt-flow-icon prompt-flow-icon-video" aria-hidden="true"></span>
+              <span>视频</span>
+            </button>
+          </div>
+          <div class="prompt-flow-panel" data-flow-panel="image">
+            <div class="prompt-flow-select-row">
+              <div class="prompt-flow-select-field">
+                <label class="label" for="imageRatioSelect">画幅比例</label>
+                <select id="imageRatioSelect" class="input native-flow-select" data-enhance-select="ratio">
+                  <option value="16:9">16:9</option>
+                  <option value="4:3">4:3</option>
+                  <option value="1:1">1:1</option>
+                  <option value="3:4">3:4</option>
+                  <option value="9:16">9:16</option>
+                </select>
+                <div class="flow-select" data-select-target="imageRatioSelect"></div>
+              </div>
+              <div class="prompt-flow-select-field">
+                <label class="label" for="imageModelSelect">生图模型</label>
+                <select id="imageModelSelect" class="input native-flow-select" data-enhance-select="model">
+                  <option value="Nano Banana 2 Lite">Banana 2 极速版 — 免费</option>
+                  <option value="Nano Banana 2">Banana 2 标准版 — 免费</option>
+                  <option value="Nano Banana Pro">Banana Pro 专业版 — 免费</option>
+                </select>
+                <div class="flow-select" data-select-target="imageModelSelect"></div>
+              </div>
+            </div>
+            <div class="prompt-flow-tabs prompt-flow-counts" role="tablist" aria-label="Images per prompt">
+              <button type="button" class="prompt-flow-option output-count-btn active" data-output-count="1" role="tab"
+                aria-selected="true">x1</button>
+              <button type="button" class="prompt-flow-option output-count-btn" data-output-count="2" role="tab"
+                aria-selected="false">x2</button>
+              <button type="button" class="prompt-flow-option output-count-btn" data-output-count="3" role="tab"
+                aria-selected="false">x3</button>
+              <button type="button" class="prompt-flow-option output-count-btn" data-output-count="4" role="tab"
+                aria-selected="false">x4</button>
+            </div>
+          </div>
+          <div class="prompt-flow-panel hidden" data-flow-panel="video">
+            <div class="prompt-flow-select-row">
+              <div class="prompt-flow-select-field">
+                <label class="label" for="videoRatioSelect">画幅比例</label>
+                <select id="videoRatioSelect" class="input native-flow-select" data-enhance-select="ratio">
+                  <option value="9:16">9:16</option>
+                  <option value="16:9">16:9</option>
+                </select>
+                <div class="flow-select" data-select-target="videoRatioSelect"></div>
+              </div>
+              <div class="prompt-flow-select-field">
+                <label class="label" for="videoModelSelect">视频模型</label>
+                <select id="videoModelSelect" class="input native-flow-select" data-enhance-select="model">
+                  <option value="Omni 1.1 Flash">Omni 1.1 Flash — 15 算力</option>
+                  <option value="Veo 3.1 Lite">Veo Lite — 10 算力</option>
+                  <option value="Veo 3.1 Fast">Veo Fast — 20 算力</option>
+                  <option value="Veo 3.1 Quality">Veo 3.1 Quality 高画质 — 100 算力 (已解锁)</option>
+                </select>
+                <div class="flow-select" data-select-target="videoModelSelect"></div>
+              </div>
+            </div>
+            <div class="prompt-flow-tabs prompt-flow-durations hidden" data-omni-duration role="tablist"
+              aria-label="Video duration">
+              <button type="button" class="prompt-flow-option video-option-btn" data-duration="4s" role="tab"
+                aria-selected="false">4s</button>
+              <button type="button" class="prompt-flow-option video-option-btn active" data-duration="6s" role="tab"
+                aria-selected="true">6s</button>
+              <button type="button" class="prompt-flow-option video-option-btn" data-duration="8s" role="tab"
+                aria-selected="false">8s</button>
+              <button type="button" class="prompt-flow-option video-option-btn" data-duration="10s" role="tab"
+                aria-selected="false">10s</button>
+            </div>
+            <div class="prompt-flow-tabs prompt-flow-counts" role="tablist" aria-label="Videos per prompt">
+              <button type="button" class="prompt-flow-option output-count-btn active" data-output-count="1" role="tab"
+                aria-selected="true">x1</button>
+              <button type="button" class="prompt-flow-option output-count-btn" data-output-count="2" role="tab"
+                aria-selected="false">x2</button>
+              <button type="button" class="prompt-flow-option output-count-btn" data-output-count="3" role="tab"
+                aria-selected="false">x3</button>
+              <button type="button" class="prompt-flow-option output-count-btn" data-output-count="4" role="tab"
+                aria-selected="false">x4</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Video prompts (imageToVideo) -->
+      <div class="section hidden" id="input-imageToVideo">
+        <span class="label">视频运动提示词 (选填)</span>
+        <p class="info-text prompt-splitter-hint">多组提示词请用独占一行的 <code>###</code> 或换行进行分隔。</p>
+        <div class="mention-list hidden" id="i2vMentionList"></div>
+        <div class="prompt-input-shell">
+          <div class="prompt-mention-highlights" id="i2vMentionHighlights" aria-hidden="true"></div>
+          <textarea id="videoPromptInput" class="input video-prompt-textarea"
+            placeholder="动态运镜、景别运动变化（默认）" rows="8"></textarea>
+        </div>
+        <div class="button-row button-row-3 script-actions" style="margin-top:8px">
+          <button type="button" id="btnPreviewI2vPrompts" class="btn btn-primary btn-sm">预览并分配素材</button>
+          <button type="button" class="btn btn-secondary btn-sm hidden" id="clearPromptBtn">清空提示词</button>
+        </div>
+        <span class="info-text">Split with the rule above, preview the list, then assign one or more assets to each row
+          (or keep No asset).</span>
+      </div>
+
+      <!-- Asset picker popover for imageToVideo queue rows -->
+      <div id="i2vAssetPicker" class="i2v-asset-picker hidden" role="dialog" aria-label="Assign assets">
+        <div class="i2v-asset-picker-head">
+          <span>Assign assets</span>
+          <button type="button" id="i2vAssetPickerClose" class="i2v-asset-picker-close" aria-label="Close">×</button>
+        </div>
+        <p class="i2v-asset-picker-hint">Tap to select multiple. Max <span id="i2vAssetMaxLabel">5</span>.</p>
+        <button type="button" class="i2v-asset-picker-none" data-asset-idx="">No asset (text only)</button>
+        <div class="i2v-asset-picker-grid" id="i2vAssetPickerGrid"></div>
+        <div class="i2v-asset-picker-foot">
+          <span id="i2vAssetPickerCount" class="i2v-asset-picker-count">0 selected</span>
+          <button type="button" id="i2vAssetPickerApply" class="btn btn-primary btn-sm">Done</button>
+        </div>
+      </div>
+
+      <!-- ★ P2I v1.6: 중복 스타일 UI 제거 (설정 탭 스타일 자동 연동)
+           - 프롬프트→이미지 모드: 설정 스타일 기본 적용
+           - 커스텀 캐릭터 레퍼런스 체크 시: 스타일 무시, 사용자 프롬프트만 그대로 적용 -->
+
+      <!-- 캐릭터 레퍼런스 섹션 -->
+      <div id="charRefsSection" class="section hidden">
+        <div class="section-header" style="text-align:center">
+          <h3>👨 <span>角色一致性参考图 (CCR)</span> 👩</h3>
+        </div>
+        <div id="charRefsList" class="character-refs-list"></div>
+        <div class="char-ref-action-row">
+          <button id="btnGenerateAllRefs" class="btn btn-primary">生成全部角色参考图</button>
+          <button id="btnStopCharRefGen" class="btn btn-primary hidden">⏹ 停止</button>
+        </div>
+        <div id="charRefCompletionMsg" class="charref-completion hidden">
+          <span class="charref-completion-icon">✅</span>
+          <span class="charref-completion-text">角色参考图生成完成！</span>
+        </div>
+        <!-- 캐릭터 레퍼런스 썸네일 + 사용 체크박스 -->
+        <div id="charRefSection" class="hidden" style="margin-top:8px;">
+          <div id="charRefThumbnailList"
+            style="display:flex;flex-wrap:wrap;flex-direction:row;gap:8px;padding:10px 12px;background:#1a1a1a;border-radius:8px;">
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 12px 4px;">
+            <input type="checkbox" id="useCharRefCheckbox" checked
+              style="width:16px;height:16px;cursor:pointer;accent-color:#4ade80;">
+            <label for="useCharRefCheckbox" id="useCharRefCheckboxLabel" class="char-ref-checkbox-label">生图时启用角色一致性参考锁定</label>
+          </div>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Prompt Queue (Generated) -->
+      <div class="section hidden" id="section-queue">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+          <span class="section-title">任务处理队列</span>
+          <span class="queue-count" id="queueCount">0</span>
+        </div>
+        <div class="prompt-list" id="promptList">
+          <!-- 동적으로 추가됨 -->
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="section" id="section-actions">
+        <!-- Default Start Button (non-FACTORY modes) -->
+        <button class="btn btn-primary btn-large" id="btn-start-generation">
+          <span class="prompt-flow-icon prompt-flow-icon-image" aria-hidden="true"></span>
+          <span>开始批量生成</span>
+        </button>
+
+        <!-- FACTORY Mode Split Buttons -->
+        <div class="factory-buttons hidden" id="factoryButtons">
+          <button class="btn btn-primary btn-factory-start" id="btn-factory-start">▶ 开始生成图片</button>
+          <button class="btn btn-factory-auto" id="btn-factory-auto">▶▶ 全自动流水线生成</button>
+        </div>
+
+        <!-- ★ 생성 중/완료 시 항상 하단 표시: 일시정지 + 새 프로젝트 (그록팩토리 동일) -->
+        <div class="progress-buttons hidden" id="controlButtons">
+          <button class="btn btn-secondary btn-large" id="btn-pause">⏸ 暂停任务</button>
+          <button class="btn btn-outline btn-large" id="btn-new-project-mid">新建项目</button>
+        </div>
+      </div>
+
+      <!-- Progress Section -->
+      <div class="section hidden" id="section-progress">
+        <div id="factoryPhaseStatus" class="factory-phase-status hidden"></div>
+        <span class="section-title">生成执行进度</span>
+        <div class="progress-bar" style="margin-top:8px">
+          <div class="progress-fill" id="progressFill" style="width:0%"></div>
+        </div>
+        <div class="progress-text" id="progressText">0 / 0</div>
+        <div class="progress-log" id="progressLog">
+          <!-- 동적으로 추가됨 -->
+        </div>
+      </div>
+
+      <!-- Completion Section -->
+      <div class="section hidden" id="section-completion">
+        <div class="completion-section">
+          <div class="completion-icon">🎉</div>
+          <div class="completion-title">全部任务已完成！</div>
+          <div class="completion-stats" id="completionStats">
+            <span class="stat-success">0</span> 张成功 / <span class="stat-fail">0</span> 张失败
+          </div>
+          <div class="completion-actions">
+            <button class="btn btn-primary btn-large hidden" id="btn-completion-resume">▶ 继续执行</button>
+            <button class="btn btn-danger hidden" id="btn-retry-failed">
+              <span>重新生成失败图片</span>
+            </button>
+            <button class="btn btn-outline btn-large" id="btn-new-project">新建项目</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== FACTORY MODE: Video Generation Flow ========== -->
+      <div class="section hidden" id="section-factory-video">
+        <hr class="divider">
+
+        <!-- 이미지 완료 후: 전체 이미지 재생성 + 동영상 프롬프트 생성 -->
+        <div class="factory-video-header">
+          <button class="btn btn-secondary btn-full-width" id="btn-factory-regen-all-images">▶ 重新生成全部图片</button>
+          <div class="video-prompt-buttons">
+            <button class="btn btn-primary" id="btn-generate-video-prompts">生成视频运动提示词</button>
+            <button class="btn btn-video-auto" id="btn-video-auto" title="全自动流水线：视频提示词 → 批量视频生成">▶▶ 自动生成视频</button>
+          </div>
+        </div>
+
+        <!-- 생성된 동영상프롬프트 (이미지프롬프트 박스와 동일) -->
+        <div id="generatedVideoPromptsSection" class="section hidden" style="margin-top:12px;">
+          <label class="label" for="generatedVideoPromptsText">已生成的视频提示词</label>
+          <textarea id="generatedVideoPromptsText" class="textarea textarea-large" rows="10" readonly
+            placeholder="视频提示词生成后将在此显示。"></textarea>
+          <div class="button-row button-row-3">
+            <button id="btnCopyVideoPrompts" class="btn btn-secondary btn-sm">复制</button>
+            <button id="btnEditVideoPrompts" class="btn btn-secondary btn-sm">编辑</button>
+            <button id="btnDownloadVideoPrompts" class="btn btn-secondary btn-sm">导出</button>
+          </div>
+        </div>
+
+        <!-- Video Prompt List -->
+        <div class="factory-video-list hidden" id="factoryVideoList">
+          <!-- Dynamic content: video prompt items with thumbnails -->
+        </div>
+
+        <!-- Video Generation Buttons -->
+        <div class="factory-video-actions hidden" id="factoryVideoActions">
+          <button class="btn btn-primary btn-large" id="btn-start-video-generation">
+            <span class="prompt-flow-icon prompt-flow-icon-video" aria-hidden="true"></span>
+            <span>Start</span>
+          </button>
+        </div>
+
+        <!-- Factory Video Progress Bar -->
+        <div class="factory-video-progress hidden" id="factoryVideoProgress">
+          <span class="section-title">视频生成执行进度</span>
+          <div class="progress-bar" style="margin-top:8px">
+            <div class="progress-fill" id="factoryProgressFill" style="width:0%"></div>
+          </div>
+          <div class="progress-text" id="factoryProgressText">0 / 0</div>
+        </div>
+
+        <!-- Factory Video Control Buttons -->
+        <div class="progress-buttons hidden" id="factoryControlButtons">
+          <button class="btn btn-secondary btn-large" id="btn-factory-pause" style="width: 100%;">⏸ 暂停视频生成</button>
+          <button class="btn btn-outline btn-large" id="btn-factory-new-project"
+            style="width: 100%; margin-top: 8px;">新建项目</button>
+        </div>
+
+        <!-- Video Completion Section (imageToVideo 완료 UI와 동일한 스타일) -->
+        <div class="factory-video-completion hidden" id="factoryVideoCompletion">
+          <div class="completion-box">
+            <div class="completion-icon" id="factoryVideoCompletionIcon">✅</div>
+            <div class="completion-title" id="factoryVideoCompletionTitle">视频批量生成全部完成！</div>
+            <div class="completion-stats" id="factoryVideoCompletionStats">
+              <span class="stat-success">0</span> 张成功 / <span class="stat-fail">0</span> 张失败
+            </div>
+          </div>
+          <div class="completion-actions">
+            <button class="btn btn-primary" id="btn-factory-regen-all-videos">▶ 重新生成全部视频</button>
+            <button class="btn btn-secondary hidden" id="btn-retry-failed-videos"><span>🔄 重试失败的视频</span>
+              (<span id="failedVideoCount">0</span>)</button>
+            <button class="btn btn-outline" id="btn-factory-new-project-completion">新建项目</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <!-- end #content-control -->
+
+  </div>
+  <!-- end .container -->
+
+  <!-- 커스텀 스타일 추가 모달 (Whisk와 동일) -->
+  <div id="customStyleModal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <span id="customModalTitle">添加自定义画面风格</span>
+        <button type="button" class="modal-close" id="btnCloseCustomModal" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label class="label">风格参考图 *</label>
+        <div class="image-upload-box" id="imageUploadArea" tabindex="0">
+          <img id="customImagePreview" class="image-preview hidden" alt="">
+          <div class="upload-placeholder" id="uploadPlaceholder">
+            <div class="upload-plus-btn" id="uploadPlusBtn">+</div>
+            <span class="upload-text">点击 + 上传参考图</span>
+            <span class="upload-hint">或按 Ctrl+V 粘贴</span>
+          </div>
+          <input type="file" id="customImageInput" accept="image/jpeg,image/jpg,image/png" hidden>
+        </div>
+
+        <label class="label">风格名称 *</label>
+        <input type="text" id="customStyleName" class="input" maxlength="20"
+          placeholder="例如：水墨国风、赛博朋克、复古胶片">
+        <p class="info-text">该风格名称将添加到风格选择下拉菜单中</p>
+
+        <label class="label">风格提示词（供 Gemini 参考）*</label>
+        <textarea id="customStylePrompt" class="textarea" rows="4"
+          placeholder="请输入该风格的英文提示词描述"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btnCancelCustom" class="btn btn-secondary">取消</button>
+        <button type="button" id="btnSaveCustom" class="btn btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 브랜드 프로필 저장 모달 (PRO) ============ -->
+  <div id="saveBrandModal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <span>💾 保存角色品牌库</span>
+        <button type="button" class="modal-close" id="btnCloseSaveBrandModal" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label class="label">角色库名称 *</label>
+        <input type="text" id="saveBrandName" class="input" maxlength="20"
+          placeholder="例如：西游奇谭、儿童绘本主角团、机甲战队">
+        <p class="info-text">当前 6 个槽位的所有角色参考图与设定将被保存在该名称下。</p>
+
+        <div class="save-brand-preview" id="saveBrandPreview">
+          <!-- 현재 슬롯 상태 프리뷰 (JS 렌더) -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btnCancelSaveBrand" class="btn btn-secondary">取消</button>
+        <button type="button" id="btnConfirmSaveBrand" class="btn btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 브랜드 프로필 불러오기 모달 (PRO) ============ -->
+  <div id="loadBrandModal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <span>📂 加载角色品牌库</span>
+        <button type="button" class="modal-close" id="btnCloseLoadBrandModal" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="brandProfileList" class="brand-profile-list">
+          <!-- JS에서 저장된 브랜드 카드 렌더 -->
+        </div>
+        <div id="brandProfileEmpty" class="brand-profile-empty hidden">
+          <p>💭 暂无已保存的角色库。</p>
+          <p class="info-text">在角色参考槽上传角色图片与设定后，点击“💾 保存角色库”即可将角色资产沉淀在此。</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btnCloseLoadBrand" class="btn btn-secondary">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 비디오 생성 전 초기 설정 안내 모달 (Prompt→Video, Image→Video에서만 표시) -->
+  <div id="setup-modal-overlay" class="setup-modal-overlay hidden">
+    <div class="setup-modal-content">
+      <div class="setup-modal-header">
+        <span class="setup-modal-icon" aria-hidden="true">📌</span>
+        <h3 id="setup-modal-title" class="setup-modal-title"></h3>
+      </div>
+      <div class="setup-modal-body">
+        <p id="setup-modal-desc" class="setup-modal-desc"></p>
+        <ol id="setup-modal-steps" class="setup-modal-steps">
+          <li id="setup-modal-step1"></li>
+          <li id="setup-modal-step2"></li>
+          <li id="setup-modal-step3"></li>
+        </ol>
+      </div>
+      <div class="setup-modal-checkbox">
+        <label>
+          <input type="checkbox" id="setup-modal-dismiss" aria-describedby="setup-modal-dismiss-label">
+          <span id="setup-modal-dismiss-label"></span>
+        </label>
+      </div>
+      <button type="button" id="setup-modal-confirm" class="btn btn-primary setup-modal-confirm-btn"></button>
+    </div>
+  </div>
+
+  <!-- Flow-only guard modal (shown only when the active tab isn't flow.google.com) -->
+  <div id="flow-only-modal" class="flow-only-modal-overlay hidden">
+    <div class="flow-only-modal">
+      <p class="flow-only-modal-text">本扩展专为 Google Flow (flow.google.com) 设计。<br>请在当前标签页打开 Flow。</p>
+      <div class="flow-only-modal-buttons">
+        <button type="button" id="flow-only-modal-open" class="btn btn-primary">打开 Google Flow</button>
+        <button type="button" id="flow-only-modal-close" class="btn btn-secondary">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  </div> <!-- /main-screen -->
+
+  <!-- Toast -->
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Essential setup guide modal (shown on first sidepanel load) -->
+  <div id="essential-setup-modal" class="credit-modal-overlay" style="display:none;">
+    <div class="credit-modal-box">
+      <div class="credit-modal-header essential-setup-header">
+        <div class="essential-setup-header-left">
+          <span class="credit-modal-icon">📌</span>
+          <span id="essential-setup-title" class="credit-modal-title">使用指南与技巧</span>
+        </div>
+      </div>
+      <div class="credit-modal-body">
+        <div class="setup-top-notice"
+          style="margin:0 0 14px;padding:12px 14px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.24);border-left:4px solid #2563eb;border-radius:6px;font-size:12.5px;line-height:1.7;">
+          <span><strong style='color:#2563eb;'>Notice:</strong> Google Flow can update its UI frequently. Please check
+            the <span class='essential-setup-highlight'>notice icon</span> before long runs.</span>
+        </div>
+
+        <ol class="credit-modal-list" style="margin:0 0 12px;padding-left:20px;line-height:1.8;">
+          <li><span>Flow homepage URL:</span> <a href="https://flow.google.com/" target="_blank" rel="noopener"
+              class="api-key-link">flow.google.com</a> <span>(click to open)</span></li>
+          <li>Click the inverted-triangle filter icon (top right), then <span class='essential-setup-highlight'>deselect
+              all filters</span>.</li>
+          <li>In the filter, set Sort by to '<span class='essential-setup-highlight'>Newest</span>'.</li>
+          <li>In Flow's initial settings, set <span class='essential-setup-highlight'>'Clear prompt on submit' →
+              'On'</span>.</li>
+          <li>Select your desired mode and proceed. (<span class='essential-setup-highlight'>Script-to-Image / Factory
+              mode recommended</span>)</li>
+          <li>If Factory doesn't work: Top-right ⋮ → Translate → <span class='essential-setup-highlight'>Don't translate
+              this site</span></li>
+          <li>If 'Content Script injection failed' occurs, go to <span
+              class='essential-setup-highlight'>chrome://extensions/ → AI4Next Details</span> →<br>&nbsp;&nbsp;&nbsp;#
+            Enable <span class='essential-setup-highlight'>'Allow access to the following
+              sites'</span><br>&nbsp;&nbsp;&nbsp;# Enable <span class='essential-setup-highlight'>'Allow access to file
+              URLs'</span></li>
+          <li>If files aren't saved to the designated folder or filenames aren't generated by prompt number, <span
+              class='essential-setup-highlight'>disable other extensions</span>. (Extension path conflicts are the
+            cause.)</li>
+        </ol>
+
+        <div class="setup-faq-box"
+          style="margin-top:14px;padding:12px 14px;background:rgba(56,189,248,0.08);border-left:3px solid #38bdf8;border-radius:6px;">
+          <div style="font-weight:700;font-size:13px;color:#38bdf8;margin-bottom:10px;">
+            <span>✨ Frequently Asked Questions</span>
+          </div>
+          <div style="line-height:1.7;font-size:12.5px;">
+            <p style="margin:0 0 6px;font-weight:600;">
+              <span>Q. Script analysis doesn't generate prompts!</span>
+            </p>
+            <p style="margin:0 0 4px;padding-left:14px;">→ When using Gemini <span
+                class='essential-setup-highlight'>free key</span>, key usage may be limited during peak hours. Switch to
+              a different free model in settings and retry.</p>
+            <p style="margin:0 0 12px;padding-left:14px;">→ Daily <span class='essential-setup-highlight'>API key quota
+                may be exhausted</span>. Register a new API key from another account, or get a paid API key (smarter
+              model).</p>
+            <p style="margin:0 0 6px;font-weight:600;">
+              <span>Q. Custom character reference doesn't work properly!</span>
+            </p>
+            <p style="margin:0 0 4px;padding-left:14px;">→ When using individual prompts (not auto-script mode), the
+              custom character's <span class='essential-setup-highlight'>naming or main/sub character codes (MCR/SC1/SC2
+                etc.)</span> must be included in the prompt for matching.</p>
+            <p style="margin:0;padding-left:14px;">→ Script-to-Image / Factory modes auto-detect main/sub characters via
+              AI, but the character names in your script must <span class='essential-setup-highlight'>match</span> your
+              registered naming.</p>
+          </div>
+        </div>
+
+        <p style="margin:14px 2px 0;text-align:center;font-size:11.5px;color:var(--text-secondary);line-height:1.6;">
+          <span>— AI4Next</span>
+        </p>
+      </div>
+      <div class="credit-modal-footer">
+        <label class="credit-modal-check">
+          <input type="checkbox" id="essential-setup-dont-show">
+          <span>不再显示</span>
+        </label>
+        <button id="essential-setup-close" class="credit-modal-btn">我知道了</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Credit exhausted modal -->
+  <div id="credit-exhausted-modal" class="credit-modal-overlay" style="display:none;">
+    <div class="credit-modal-box">
+      <div class="credit-modal-header">
+        <span class="credit-modal-icon">📌</span>
+        <span class="credit-modal-title">Paid Feature</span>
+      </div>
+      <div class="credit-modal-body">
+        <p>Video generation costs 20 credits per video.<br>2–7 free videos per day per account (varies by account).</p>
+        <ol>
+          <li>Google AI Free: 50–150 credits/day, resets daily (varies by account)</li>
+          <li>Google AI Pro: 1,000 credits/month</li>
+        </ol>
+      </div>
+      <div class="credit-modal-footer">
+        <label class="credit-modal-check">
+          <input type="checkbox" id="credit-modal-dont-show">
+          <span>不再显示</span>
+        </label>
+        <button id="credit-modal-close" class="credit-modal-btn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="pp-footer">
+    <span class="pp-link">AI4Next</span>
+  </footer>
+
+  <script src="../core/filename.js"></script>
+  <script src="../core/music-prompts.js"></script>
+  <script src="../core/gemini.js"></script>
+  <script src="custom-char-refs.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+
+</html>
