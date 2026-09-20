@@ -3289,6 +3289,12 @@ function initControlHandlers() {
         const apiKey = getActiveApiKey();
         if (!apiKey) {
             showToast("Gemini API key is missing. Solution: Enter your API key in Settings, or get a free key and paste it there.", 'error');
+            setTimeout(() => {
+                $('#btnOpenSettings')?.click();
+                setTimeout(() => {
+                    $('#geminiApiKeyInput')?.focus();
+                }, 200);
+            }, 400);
             return;
         }
 
@@ -3665,6 +3671,12 @@ function initControlHandlers() {
         const apiKey = getActiveApiKey();
         if (!apiKey) {
             showToast("Gemini API key is missing. Solution: Enter your API key in Settings, or get a free key and paste it there.", 'error');
+            setTimeout(() => {
+                $('#btnOpenSettings')?.click();
+                setTimeout(() => {
+                    $('#geminiApiKeyInput')?.focus();
+                }, 200);
+            }, 400);
             return;
         }
 
