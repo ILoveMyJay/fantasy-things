@@ -3205,8 +3205,72 @@ async function persistSettingsChange(options = {}) {
     if (!options.quiet) markSettingsSaved('settingsAutosaved');
 }
 
+const OPENAI_PRESETS = {
+    deepseek: {
+        baseUrl: 'https://api.deepseek.com/v1',
+        model: 'deepseek-chat'
+    },
+    openai: {
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-4o-mini'
+    },
+    siliconflow: {
+        baseUrl: 'https://api.siliconflow.cn/v1',
+        model: 'deepseek-ai/DeepSeek-V3'
+    },
+    dashscope: {
+        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        model: 'qwen-plus'
+    },
+    zhipu: {
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+        model: 'glm-4-flash'
+    },
+    moonshot: {
+        baseUrl: 'https://api.moonshot.cn/v1',
+        model: 'moonshot-v1-8k'
+    },
+    openrouter: {
+        baseUrl: 'https://openrouter.ai/api/v1',
+        model: 'deepseek/deepseek-chat'
+    },
+    groq: {
+        baseUrl: 'https://api.groq.com/openai/v1',
+        model: 'llama-3.3-70b-versatile'
+    },
+    ollama: {
+        baseUrl: 'http://localhost:11434/v1',
+        model: 'qwen2.5:7b'
+    },
+    custom: {
+        baseUrl: '',
+        model: ''
+    }
+};
+
 function initSettingsHandlers() {
-    // Flow Studio Pro: Gemini API Key & Model direct inputs
+    // ── AI Provider Switcher (Gemini vs OpenAI Compatible) ──
+    $('#aiProviderToggle')?.querySelectorAll('.ai-provider-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const provider = btn.getAttribute('data-provider') || 'gemini';
+            APP.settings.aiProvider = provider;
+            if (typeof setActiveAiProvider === 'function') {
+                setActiveAiProvider(provider);
+            }
+            $('#aiProviderToggle')?.querySelectorAll('.ai-provider-btn').forEach(b => {
+                const isActive = b === btn;
+                b.classList.toggle('active', isActive);
+                b.setAttribute('aria-checked', isActive ? 'true' : 'false');
+            });
+            $('#geminiConfigSection')?.classList.toggle('hidden', provider !== 'gemini');
+            $('#openaiConfigSection')?.classList.toggle('hidden', provider !== 'openai');
+
+            persistSettingsChange();
+            updateGeminiKeyStatus();
+        });
+    });
+
+    // ── Gemini Handlers ──
     $('#geminiApiKeyInput')?.addEventListener('change', (e) => {
         const val = e.target.value.trim();
         APP.settings.geminiApiKey = val;
@@ -3222,6 +3286,64 @@ function initSettingsHandlers() {
         }
         persistSettingsChange();
         updateGeminiKeyStatus();
+    });
+
+    // ── OpenAI Compatible Handlers ──
+    $('#openaiPresetSelect')?.addEventListener('change', (e) => {
+        const presetKey = e.target.value;
+        APP.settings.openaiPreset = presetKey;
+        const preset = OPENAI_PRESETS[presetKey];
+        if (preset && presetKey !== 'custom') {
+            APP.settings.openaiBaseUrl = preset.baseUrl;
+            APP.settings.openaiModel = preset.model;
+            const urlInput = $('#openaiBaseUrlInput');
+            if (urlInput) urlInput.value = preset.baseUrl;
+            const modelInput = $('#openaiModelInput');
+            if (modelInput) modelInput.value = preset.model;
+        }
+        if (typeof setActiveOpenaiConfig === 'function') {
+            setActiveOpenaiConfig({
+                baseUrl: APP.settings.openaiBaseUrl,
+                apiKey: APP.settings.openaiApiKey,
+                model: APP.settings.openaiModel,
+                preset: APP.settings.openaiPreset
+            });
+        }
+        persistSettingsChange();
+        updateGeminiKeyStatus();
+    });
+
+    $('#openaiBaseUrlInput')?.addEventListener('change', (e) => {
+        APP.settings.openaiBaseUrl = e.target.value.trim();
+        if (typeof setActiveOpenaiConfig === 'function') {
+            setActiveOpenaiConfig({ baseUrl: APP.settings.openaiBaseUrl });
+        }
+        persistSettingsChange();
+    });
+
+    $('#openaiApiKeyInput')?.addEventListener('change', (e) => {
+        const val = e.target.value.trim();
+        APP.settings.openaiApiKey = val;
+        chrome.storage.local.set({ openaiApiKey: val });
+        if (typeof setActiveOpenaiConfig === 'function') {
+            setActiveOpenaiConfig({ apiKey: val });
+        }
+        persistSettingsChange();
+        updateGeminiKeyStatus();
+    });
+
+    $('#openaiModelInput')?.addEventListener('change', (e) => {
+        APP.settings.openaiModel = e.target.value.trim();
+        if (typeof setActiveOpenaiConfig === 'function') {
+            setActiveOpenaiConfig({ model: APP.settings.openaiModel });
+        }
+        persistSettingsChange();
+        updateGeminiKeyStatus();
+    });
+
+    // ── Test AI Connection Button ──
+    $('#btnTestAiConnection')?.addEventListener('click', async () => {
+        await testAiConnection();
     });
 
     // Gemini API Key 설정 버튼 → 모달 열기
@@ -3493,11 +3615,16 @@ function initControlHandlers() {
 
         const apiKey = getActiveApiKey();
         if (!apiKey) {
-            showToast("Gemini API key is missing. Solution: Enter your API key in Settings, or get a free key and paste it there.", 'error');
+            const isOp = APP.settings.aiProvider === 'openai';
+            showToast(isOp ? "未配置 API Key。请在设置中输入您的 API Key（如 DeepSeek/OpenAI 等）。" : "未配置 Gemini API Key。请在设置中输入您的 API Key。", 'error');
             setTimeout(() => {
                 $('#btnOpenSettings')?.click();
                 setTimeout(() => {
-                    $('#geminiApiKeyInput')?.focus();
+                    if (isOp) {
+                        $('#openaiApiKeyInput')?.focus();
+                    } else {
+                        $('#geminiApiKeyInput')?.focus();
+                    }
                 }, 200);
             }, 400);
             return;
@@ -3886,11 +4013,16 @@ function initControlHandlers() {
 
         const apiKey = getActiveApiKey();
         if (!apiKey) {
-            showToast("Gemini API key is missing. Solution: Enter your API key in Settings, or get a free key and paste it there.", 'error');
+            const isOp = APP.settings.aiProvider === 'openai';
+            showToast(isOp ? "未配置 API Key。请在设置中输入您的 API Key（如 DeepSeek/OpenAI 等）。" : "未配置 Gemini API Key。请在设置中输入您的 API Key。", 'error');
             setTimeout(() => {
                 $('#btnOpenSettings')?.click();
                 setTimeout(() => {
-                    $('#geminiApiKeyInput')?.focus();
+                    if (isOp) {
+                        $('#openaiApiKeyInput')?.focus();
+                    } else {
+                        $('#geminiApiKeyInput')?.focus();
+                    }
                 }, 200);
             }, 400);
             return;
@@ -5345,7 +5477,8 @@ async function _handleResumeGeneration() {
     try {
         const apiKey = getActiveApiKey();
         if (!apiKey) {
-            showToast("Please enter your Gemini API Key.", 'error');
+            const isOp = APP.settings.aiProvider === 'openai';
+            showToast(isOp ? "请在设置中输入 API Key (如 DeepSeek/OpenAI)。" : "请在设置中输入 Gemini API Key。", 'error');
             if (btn) { btn.disabled = false; btn.innerHTML = '🔄 <span>' + ("Resume Prompt Generation") + '</span>'; }
             return;
         }
@@ -8765,9 +8898,14 @@ async function saveSettings() {
 
 async function loadSettings() {
     const defaults = {
+        aiProvider: 'gemini', // 'gemini' | 'openai'
         geminiApiKey: '',
         geminiApiKeyPaid: '',
         geminiModel: 'gemini-3-flash-preview',
+        openaiBaseUrl: 'https://api.deepseek.com/v1',
+        openaiApiKey: '',
+        openaiModel: 'deepseek-chat',
+        openaiPreset: 'deepseek',
         nationality: 'korean',
         downloadFolder: 'AI4Next',
         projectName: '',
@@ -8790,7 +8928,7 @@ async function loadSettings() {
     };
 
     return new Promise((resolve) => {
-        chrome.storage.local.get(['grokSettings', 'apiKey', 'apiKeyPaid'], (result) => {
+        chrome.storage.local.get(['grokSettings', 'apiKey', 'apiKeyPaid', 'openaiApiKey'], (result) => {
             APP.settings = { ...defaults, ...(result.grokSettings || {}) };
             delete APP.settings.autoDownloadImagePrompts;
             delete APP.settings.autoDownloadVideoPrompts;
@@ -8814,9 +8952,23 @@ async function loadSettings() {
             if (result.apiKeyPaid != null && result.apiKeyPaid !== '') {
                 APP.settings.geminiApiKeyPaid = result.apiKeyPaid;
             }
-            // ★ Gemini 모델 활성화
+            if (result.openaiApiKey != null && result.openaiApiKey !== '') {
+                APP.settings.openaiApiKey = result.openaiApiKey;
+            }
+            // ★ AI Engine 동기화
+            if (typeof setActiveAiProvider === 'function') {
+                setActiveAiProvider(APP.settings.aiProvider || 'gemini');
+            }
             if (typeof setActiveGeminiModel === 'function') {
                 setActiveGeminiModel(APP.settings.geminiModel);
+            }
+            if (typeof setActiveOpenaiConfig === 'function') {
+                setActiveOpenaiConfig({
+                    baseUrl: APP.settings.openaiBaseUrl,
+                    apiKey: APP.settings.openaiApiKey,
+                    model: APP.settings.openaiModel,
+                    preset: APP.settings.openaiPreset
+                });
             }
             const savedMode = APP.settings.lastMode || 'textToImage';
             APP.mode = normalizeVisibleMode(savedMode);
@@ -8842,12 +8994,33 @@ function safeDownloadFolder(v) {
 }
 
 function applySettingsToUI() {
-    // Gemini KEY 상태 표시 및 입력창 동기화 (Flow Studio Pro)
-    updateGeminiKeyStatus();
+    // ── AI Provider Switcher ──
+    const provider = APP.settings.aiProvider || 'gemini';
+    $('#aiProviderToggle')?.querySelectorAll('.ai-provider-btn').forEach(b => {
+        const isMatch = b.getAttribute('data-provider') === provider;
+        b.classList.toggle('active', isMatch);
+        b.setAttribute('aria-checked', isMatch ? 'true' : 'false');
+    });
+    $('#geminiConfigSection')?.classList.toggle('hidden', provider !== 'gemini');
+    $('#openaiConfigSection')?.classList.toggle('hidden', provider !== 'openai');
+
+    // Gemini inputs
     const geminiInput = $('#geminiApiKeyInput');
     if (geminiInput) geminiInput.value = APP.settings.geminiApiKey || '';
     const geminiModel = $('#geminiModelSelect');
     if (geminiModel) geminiModel.value = APP.settings.geminiModel || 'gemini-3-flash-preview';
+
+    // OpenAI inputs
+    const presetSelect = $('#openaiPresetSelect');
+    if (presetSelect) presetSelect.value = APP.settings.openaiPreset || 'deepseek';
+    const urlInput = $('#openaiBaseUrlInput');
+    if (urlInput) urlInput.value = APP.settings.openaiBaseUrl || 'https://api.deepseek.com/v1';
+    const keyInput = $('#openaiApiKeyInput');
+    if (keyInput) keyInput.value = APP.settings.openaiApiKey || '';
+    const modelInput = $('#openaiModelInput');
+    if (modelInput) modelInput.value = APP.settings.openaiModel || 'deepseek-chat';
+
+    updateGeminiKeyStatus();
 
     // Nationality
     const natSelect = $('#nationalitySelect');
@@ -8924,9 +9097,12 @@ function fileToBase64(file) {
 }
 
 /**
- * 현재 선택된 모델에 맞는 API 키 반환 (유료 모델 → 유료 키 → 무료 키 폴백)
+ * 当前选择引擎对应的有效 API 密钥
  */
 function getActiveApiKey() {
+    if (APP.settings.aiProvider === 'openai') {
+        return (APP.settings.openaiApiKey || '').trim();
+    }
     const model = APP.settings.geminiModel || 'gemini-3-flash-preview';
     const isFree = typeof isGeminiFreeModel === 'function' ? isGeminiFreeModel(model) : true;
     if (!isFree && APP.settings.geminiApiKeyPaid) {
@@ -8936,40 +9112,130 @@ function getActiveApiKey() {
 }
 
 /**
- * 설정 패널의 Gemini KEY 상태 표시 업데이트
+ * 设置面板与顶栏的 AI 状态徽标更新
  */
 function updateGeminiKeyStatus() {
     const badge = $('#geminiModelBadge');
     const statusText = $('#geminiKeyStatusText');
-    if (!badge || !statusText) return;
+    if (!badge && !statusText) return;
+
+    const isOp = APP.settings.aiProvider === 'openai';
+    if (isOp) {
+        const model = APP.settings.openaiModel || 'deepseek-chat';
+        const hasKey = !!APP.settings.openaiApiKey || (APP.settings.openaiBaseUrl || '').includes('localhost');
+        if (badge) {
+            badge.textContent = model.length > 16 ? model.slice(0, 14) + '..' : model;
+            badge.style.background = '#f5f3ff';
+            badge.style.color = '#7c3aed';
+            badge.style.borderColor = '#c4b5fd';
+        }
+        if (statusText) {
+            statusText.innerHTML = hasKey
+                ? 'AI KEY REGISTERED <span style="color:#10b981">&#10003;</span>'
+                : 'REGISTER API KEY';
+        }
+        return;
+    }
 
     const model = APP.settings.geminiModel || 'gemini-3-flash-preview';
     const label = typeof getGeminiModelLabel === 'function' ? getGeminiModelLabel(model) : model;
     const isFree = typeof isGeminiFreeModel === 'function' ? isGeminiFreeModel(model) : true;
     const hasKey = isFree ? !!APP.settings.geminiApiKey : !!APP.settings.geminiApiKeyPaid;
 
-    badge.textContent = label;
-    if (isFree) {
-        badge.style.background = '#ecfdf5';
-        badge.style.color = '#059669';
-        badge.style.borderColor = '#6ee7b7';
-    } else {
-        badge.style.background = '#eff6ff';
-        badge.style.color = '#2563eb';
-        badge.style.borderColor = '#93c5fd';
+    if (badge) {
+        badge.textContent = label;
+        if (isFree) {
+            badge.style.background = '#ecfdf5';
+            badge.style.color = '#059669';
+            badge.style.borderColor = '#6ee7b7';
+        } else {
+            badge.style.background = '#eff6ff';
+            badge.style.color = '#2563eb';
+            badge.style.borderColor = '#93c5fd';
+        }
     }
 
-    if (hasKey) {
-        statusText.innerHTML = isFree
-            ? "FREE KEY REGISTERED" + ' <span style="color:#10b981">&#10003;</span>'
-            : "PAID KEY REGISTERED" + ' <span style="color:#2563eb">&#10003;</span>';
-    } else {
-        statusText.textContent = "REGISTER API KEY";
+    if (statusText) {
+        if (hasKey) {
+            statusText.innerHTML = isFree
+                ? "FREE KEY REGISTERED" + ' <span style="color:#10b981">&#10003;</span>'
+                : "PAID KEY REGISTERED" + ' <span style="color:#2563eb">&#10003;</span>';
+        } else {
+            statusText.textContent = "REGISTER API KEY";
+        }
     }
 
-    // 우측 설정 버튼 텍스트도 언어 동기화
     const settingBtn = $('#geminiKeySettingBtn');
     if (settingBtn) settingBtn.textContent = "API KEY SETTINGS";
+}
+
+/**
+ * 测试 AI API 连通性
+ */
+async function testAiConnection() {
+    const pill = $('#testAiStatusPill');
+    const btn = $('#btnTestAiConnection');
+    if (!pill) return;
+
+    pill.className = 'test-status-pill testing';
+    pill.textContent = '⏳ 测试连接中...';
+    pill.classList.remove('hidden');
+    if (btn) btn.disabled = true;
+
+    const startTime = Date.now();
+    try {
+        const provider = APP.settings.aiProvider || 'gemini';
+        if (provider === 'gemini') {
+            const key = getActiveApiKey();
+            if (!key) throw new Error('请先填入 Gemini API Key');
+            const model = APP.settings.geminiModel || 'gemini-3-flash-preview';
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: 'Hi, reply with OK' }] }],
+                    generationConfig: { maxOutputTokens: 10 }
+                })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error?.message || `HTTP ${res.status}`);
+            }
+        } else {
+            const key = (APP.settings.openaiApiKey || '').trim();
+            const baseUrl = (APP.settings.openaiBaseUrl || 'https://api.deepseek.com/v1').trim().replace(/\/+$/, '');
+            const model = (APP.settings.openaiModel || 'deepseek-chat').trim();
+            const endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+
+            const headers = { 'Content-Type': 'application/json' };
+            if (key) headers['Authorization'] = `Bearer ${key}`;
+
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    model,
+                    messages: [{ role: 'user', content: 'Hi, reply with OK' }],
+                    max_tokens: 10
+                })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error?.message || err.message || `HTTP ${res.status}`);
+            }
+        }
+
+        const elapsed = Date.now() - startTime;
+        pill.className = 'test-status-pill success';
+        pill.textContent = `✓ 连通正常 (${elapsed}ms)`;
+        showToast(`AI API 连接成功！响应耗时: ${elapsed}ms`, 'success');
+    } catch (e) {
+        pill.className = 'test-status-pill error';
+        pill.textContent = '✗ 连接失败';
+        showToast(`连接失败: ${e.message}`, 'error', 6000);
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }
 
 function showGeminiGuideModal() {
@@ -9422,7 +9688,8 @@ async function generateVideoPrompts() {
 
     const apiKey = getActiveApiKey();
     if (!apiKey) {
-        showToast("Gemini API key is missing. Solution: Enter your API key in Settings, or get a free key and paste it there.", 'error');
+        const isOp = APP.settings.aiProvider === 'openai';
+        showToast(isOp ? "未配置 API Key。请在设置中输入您的 API Key（如 DeepSeek/OpenAI 等）。" : "未配置 Gemini API Key。请在设置中输入您的 API Key。", 'error');
         return;
     }
 

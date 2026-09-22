@@ -143,23 +143,93 @@
         <div class="settings-panel" data-settings-content="gemini">
           <div class="settings-card">
             <div class="settings-card-head">
-              <span class="section-title">Gemini AI 智能分镜大脑</span>
+              <span class="section-title">🧠 AI 智能分镜大脑</span>
               <span class="settings-card-hint">长剧本拆解与角色一致性必备</span>
             </div>
+
+            <!-- Provider Switcher -->
             <div class="section">
-              <label class="label" for="geminiApiKeyInput">GEMINI API KEY（免费 / 付费均可）</label>
-              <input type="password" id="geminiApiKeyInput" class="input" placeholder="AIzaSy... (输入您的 Gemini 免费或付费密钥)" autocomplete="off">
-              <span class="info-text">支持长剧本深度拆解、角色一致性推断。<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--mint-dark,#4338CA);font-weight:600;text-decoration:underline;">获取免费 Key ↗</a></span>
+              <label class="label">AI 协议服务商</label>
+              <div class="ai-provider-toggle" id="aiProviderToggle" role="radiogroup" aria-label="AI Provider">
+                <button type="button" class="ai-provider-btn active" data-provider="gemini" role="radio" aria-checked="true">
+                  <span class="provider-icon">🌐</span>
+                  <span class="provider-name">Google Gemini</span>
+                </button>
+                <button type="button" class="ai-provider-btn" data-provider="openai" role="radio" aria-checked="false">
+                  <span class="provider-icon">⚡</span>
+                  <span class="provider-name">OpenAI 兼容 (DeepSeek/通用)</span>
+                </button>
+              </div>
             </div>
-            <div class="section">
-              <label class="label" for="geminiModelSelect">剧本分析大模型</label>
-              <select id="geminiModelSelect" class="input">
-                <option value="gemini-3-flash-preview" selected>Gemini 3 Flash (极速且聪明 — 强烈推荐)</option>
-                <option value="gemini-3.1-flash-lite-preview">Gemini 3.1 Flash Lite (超高速度)</option>
-                <option value="gemini-2.5-pro">Gemini 2.5 Pro (深度电影级推理)</option>
-                <option value="gemini-2.5-flash">Gemini 2.5 Flash (标准版)</option>
-              </select>
+
+            <!-- Gemini Config Panel -->
+            <div id="geminiConfigSection" class="provider-config-panel">
+              <div class="section">
+                <label class="label" for="geminiApiKeyInput">GEMINI API KEY（免费 / 付费均可）</label>
+                <input type="password" id="geminiApiKeyInput" class="input" placeholder="AIzaSy... (输入您的 Gemini 免费或付费密钥)" autocomplete="off">
+                <span class="info-text">支持长剧本深度拆解、角色一致性推断。<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--mint-dark,#4338CA);font-weight:600;text-decoration:underline;">获取免费 Key ↗</a></span>
+              </div>
+              <div class="section">
+                <label class="label" for="geminiModelSelect">Gemini 剧本分析模型</label>
+                <select id="geminiModelSelect" class="input">
+                  <option value="gemini-3-flash-preview" selected>Gemini 3 Flash (极速且聪明 — 强烈推荐)</option>
+                  <option value="gemini-3.1-flash-lite-preview">Gemini 3.1 Flash Lite (超高速度)</option>
+                  <option value="gemini-2.5-pro">Gemini 2.5 Pro (深度电影级推理)</option>
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash (标准版)</option>
+                </select>
+              </div>
             </div>
+
+            <!-- OpenAI Compatible Config Panel -->
+            <div id="openaiConfigSection" class="provider-config-panel hidden">
+              <!-- Preset Selector -->
+              <div class="section">
+                <label class="label" for="openaiPresetSelect">快捷服务商预设 (一键填入地址与模型)</label>
+                <select id="openaiPresetSelect" class="input">
+                  <option value="deepseek" selected>🌟 DeepSeek 官方 (深度求索 / 推荐性价比高)</option>
+                  <option value="openai">⚡ OpenAI 官方 (ChatGPT / GPT-4o)</option>
+                  <option value="siliconflow">🚀 硅基流动 (SiliconFlow / 国内极速)</option>
+                  <option value="dashscope">🌐 阿里通义千问 (DashScope / Qwen)</option>
+                  <option value="zhipu">💫 智谱清言 (GLM-4 / 清华系)</option>
+                  <option value="moonshot">🌙 月之暗面 (Moonshot / Kimi)</option>
+                  <option value="openrouter">🔀 OpenRouter (海外模型聚合)</option>
+                  <option value="groq">⚡ Groq (超高速推理)</option>
+                  <option value="ollama">💻 Ollama 本地私有大模型 (免外网)</option>
+                  <option value="custom">🛠️ 自定义服务商 (Custom Endpoint)</option>
+                </select>
+              </div>
+
+              <!-- Base URL Input -->
+              <div class="section">
+                <label class="label" for="openaiBaseUrlInput">API Base URL (接口地址)</label>
+                <input type="text" id="openaiBaseUrlInput" class="input" placeholder="https://api.deepseek.com/v1" autocomplete="off" value="https://api.deepseek.com/v1">
+                <span class="info-text">支持任意第三方中转站、反代或本地地址（如 http://localhost:11434/v1）。</span>
+              </div>
+
+              <!-- API Key Input -->
+              <div class="section">
+                <label class="label" for="openaiApiKeyInput">API KEY (密钥)</label>
+                <input type="password" id="openaiApiKeyInput" class="input" placeholder="sk-... (输入您的 API 密钥)" autocomplete="off">
+              </div>
+
+              <!-- Model Name Input -->
+              <div class="section">
+                <label class="label" for="openaiModelInput">模型名称 (Model Name)</label>
+                <input type="text" id="openaiModelInput" class="input" placeholder="deepseek-chat" autocomplete="off" value="deepseek-chat">
+                <span class="info-text">支持自由输入任何模型名称（如 deepseek-chat, gpt-4o-mini, qwen-plus 等）。</span>
+              </div>
+
+              <!-- Connection Test Row -->
+              <div class="section" style="margin-top: 12px;">
+                <div class="test-conn-row">
+                  <button type="button" class="btn btn-secondary btn-test-conn" id="btnTestAiConnection">
+                    <span class="test-icon">⚡</span> 测试 API 连接
+                  </button>
+                  <span class="test-status-pill hidden" id="testAiStatusPill">未测试</span>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>

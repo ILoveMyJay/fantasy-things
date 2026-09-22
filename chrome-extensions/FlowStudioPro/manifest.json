@@ -23,7 +23,7 @@
       "run_at": "document_end"
    } ],
    "description": "Google Flow 批量提示词生图/生视频、剧本智能分镜拆解与6槽位角色一致性制片厂自动化工具",
-   "host_permissions": [ "*://flow.google.com/*", "https://generativelanguage.googleapis.com/*" ],
+   "host_permissions": [ "*://flow.google.com/*", "https://generativelanguage.googleapis.com/*", "<all_urls>" ],
    "icons": {
       "128": "icons/ICON128.png",
       "16": "icons/ICON16.png",

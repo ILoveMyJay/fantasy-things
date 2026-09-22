@@ -21,6 +21,23 @@ function getGeminiModelLabel(name) {
     return [...GEMINI_FREE_MODELS, ...GEMINI_PAID_MODELS].find(m => m.name === name)?.label || name;
 }
 
+// ── AI Provider & OpenAI Compatible 配置 ──
+let _activeAiProvider = 'gemini'; // 'gemini' | 'openai'
+let _activeOpenaiConfig = {
+    baseUrl: 'https://api.deepseek.com/v1',
+    apiKey: '',
+    model: 'deepseek-chat',
+    preset: 'deepseek'
+};
+function setActiveAiProvider(provider) { _activeAiProvider = provider === 'openai' ? 'openai' : 'gemini'; }
+function getActiveAiProvider() { return _activeAiProvider; }
+function setActiveOpenaiConfig(config) {
+    if (config) {
+        _activeOpenaiConfig = { ..._activeOpenaiConfig, ...config };
+    }
+}
+function getActiveOpenaiConfig() { return _activeOpenaiConfig; }
+
 /** scriptText에서 공백·구두점·특수기호를 모두 제거하여 순수 텍스트만 반환 */
 function cleanScriptText(text) {
     if (!text) return '';
@@ -3417,9 +3434,116 @@ function _normalizeBatchPrompt(p) {
 }
 
 // ═══════════════════════════════════════════
-// 공통 Gemini API 호출
+// OpenAI 兼容通用大模型 API 调用 (DeepSeek / OpenAI / SiliconFlow / Ollama 等)
+// ═══════════════════════════════════════════
+async function _openaiApiCall(apiKey, prompt, maxOutputTokens = 8192) {
+    const config = getActiveOpenaiConfig();
+    const effectiveKey = (apiKey || config.apiKey || '').trim();
+    if (!effectiveKey && !config.baseUrl?.includes('localhost') && !config.baseUrl?.includes('127.0.0.1')) {
+        throw new Error('未配置 API Key。请在设置中填入您的 API Key（DeepSeek/OpenAI/硅基流动等）。');
+    }
+
+    let baseUrl = (config.baseUrl || 'https://api.deepseek.com/v1').trim();
+    baseUrl = baseUrl.replace(/\/+$/, ''); // 去除末尾多余斜杠
+    const endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+    const modelName = (config.model || 'deepseek-chat').trim();
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 900000); // 15분 타임아웃
+
+    const headers = {
+        'Content-Type': 'application/json'
+    };
+    if (effectiveKey) {
+        headers['Authorization'] = `Bearer ${effectiveKey}`;
+    }
+
+    let response;
+    try {
+        response = await fetch(endpoint, {
+            method: 'POST',
+            headers,
+            signal: controller.signal,
+            body: JSON.stringify({
+                model: modelName,
+                messages: [
+                    {
+                        role: 'system',
+                        content: 'You are an elite cinema director, prompt engineer, and storyboard artist. You strictly follow formatting instructions and output well-formed JSON when requested.'
+                    },
+                    {
+                        role: 'user',
+                        content: prompt
+                    }
+                ],
+                temperature: 0.7
+            })
+        });
+    } catch (e) {
+        clearTimeout(timeout);
+        if (e.name === 'AbortError') {
+            throw new Error(`AI API 响应超时 (15分钟)。模型: ${modelName}。若剧本过长请减少分镜数后重试。`);
+        }
+        const msg = (e?.message || '').toLowerCase();
+        if (msg.includes('failed to fetch') || msg.includes('network') || msg.includes('load failed')) {
+            throw new Error(`网络连接失败：无法访问 ${baseUrl}。请检查接口地址是否正确、网络代理或跨域设置。`);
+        }
+        throw e;
+    }
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errObj = errorData.error || {};
+        const errMsg = errObj.message || errorData.message || `HTTP ${response.status}`;
+
+        if (response.status === 401) {
+            throw new Error(`401 未授权：API Key 无效或过期。请检查输入的密钥（提供商: ${baseUrl}）。`);
+        }
+        if (response.status === 404) {
+            throw new Error(`404 路径不存在：模型 "${modelName}" 未找到，或 Base URL 地址错误（当前为: ${baseUrl}）。`);
+        }
+        if (response.status === 429) {
+            throw new Error(`429 限流或额度耗尽：触发服务商频率限制或余额不足。请稍后重试或检查账户额度。`);
+        }
+        if (response.status >= 500) {
+            throw new Error(`5xx 服务商服务器错误 (${response.status})：${errMsg}。请稍后重试。`);
+        }
+        throw new Error(`AI API 错误 (${response.status}): ${errMsg}`);
+    }
+
+    const data = await response.json();
+    const choice = data.choices?.[0];
+    const rawContent = choice?.message?.content || choice?.message?.reasoning_content || choice?.text || '';
+
+    if (!rawContent) {
+        throw new Error(`AI 返回空内容（模型: ${modelName}）。请检查该模型是否支持文本生成或被内容安全策略拦截。`);
+    }
+
+    // ★ 归一化为 Gemini candidates 结构，下游所有解析器和截断检测完全透明兼容
+    return {
+        candidates: [{
+            content: {
+                parts: [{ text: rawContent }]
+            },
+            finishReason: choice.finish_reason === 'length' ? 'MAX_TOKENS' : 'STOP'
+        }],
+        usageMetadata: {
+            promptTokenCount: data.usage?.prompt_tokens,
+            candidatesTokenCount: data.usage?.completion_tokens,
+            totalTokenCount: data.usage?.total_tokens
+        }
+    };
+}
+
+// ═══════════════════════════════════════════
+// 공통 AI API 호출 (Gemini / OpenAI Compatible 자동 라우팅)
 // ═══════════════════════════════════════════
 async function _geminiApiCall(apiKey, prompt, maxOutputTokens = 16384) {
+    if (getActiveAiProvider() === 'openai') {
+        return await _openaiApiCall(apiKey, prompt, maxOutputTokens);
+    }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 900000);
 
@@ -4673,58 +4797,10 @@ ${imagePromptList}
 Remember: You are the world's best storyboard artist. Each prompt must be CINEMATIC, EMOTIONAL, and create HOOKS that make viewers unable to look away.`;
 
     
-    // ★ 별도 API 호출 (temperature 제거, maxOutputTokens = 65536)
+    // ★ 공통 API 호출 (Gemini 및 OpenAI 兼容 모델 동시 지원)
     const maxOutputTokens = 65536;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 900000);
-    
-    let response;
-    try {
-        response = await fetch(`${GEMINI_API_BASE}/${_activeGeminiModel}:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                    maxOutputTokens,
-                    topP: 0.95,
-                    topK: 40
-                }
-            })
-        });
-    } catch (e) {
-        clearTimeout(timeout);
-        if (e.name === 'AbortError') {
-            const error = new Error('API_ERROR:응답 시간 초과 (15분)');
-            error.code = 'API_ERROR';
-            throw error;
-        }
-        // 네트워크 오류
-        const error = new Error(`API_ERROR:네트워크 오류 - ${e.message}`);
-        error.code = 'API_ERROR';
-        throw error;
-    }
-    clearTimeout(timeout);
-    
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        
-        if (response.status === 429) {
-            const error = new Error('API_QUOTA:API 사용량 초과');
-            error.code = 'API_QUOTA';
-            throw error;
-        }
-        
-        const error = new Error(`API_ERROR:${errorData.error?.message || `HTTP ${response.status}`}`);
-        error.code = 'API_ERROR';
-        throw error;
-    }
-    
-    const data = await response.json();
+    const data = await _geminiApiCall(apiKey, prompt, maxOutputTokens);
     const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    
-    // ★ 상세 디버그 로그
     
     return parseVideoPromptResponse(rawText, imagePrompts);
 }

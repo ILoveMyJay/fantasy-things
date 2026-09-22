@@ -5,10 +5,15 @@ if(typeof console!=="undefined" && (typeof globalThis!=="undefined" && globalThi
  */
 
 const DEFAULT_SETTINGS = {
-    // API
+    // API & AI Engine
+    aiProvider: 'gemini', // 'gemini' | 'openai'
     geminiApiKey: '',
     geminiApiKeyPaid: '',
     geminiModel: 'gemini-3-flash-preview',
+    openaiBaseUrl: 'https://api.deepseek.com/v1',
+    openaiApiKey: '',
+    openaiModel: 'deepseek-chat',
+    openaiPreset: 'deepseek',
 
     // 캐릭터
     nationality: 'korean',
