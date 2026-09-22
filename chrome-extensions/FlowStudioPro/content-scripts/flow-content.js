@@ -1,4 +1,4 @@
-if(typeof console!=="undefined"){console.log=function(){};console.warn=function(){};console.error=function(){};}
+if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=function(){};console.warn=function(){};console.error=function(){};}
 /**
  * flow-content.js — FLOW Factory 메인 자동화 Content Script
  * 2026-03-07 실기 테스트 완료 기준 (커서 전달 지침 최종)
@@ -28,6 +28,45 @@ if(typeof console!=="undefined"){console.log=function(){};console.warn=function(
   let controlState = 'IDLE';
   let _currentVideoPipelineResumeData = null;
   let _videoPipelineRunning = false;
+  let _activePipelineSettings = null;
+
+  function getProjectStorageKey() {
+    const href = window.location.href || '';
+    const m = href.match(/\/project\/([a-zA-Z0-9_-]+)/);
+    return m ? `flow_proj_assets_${m[1]}` : 'flow_proj_assets_current';
+  }
+
+  function getKnownProjectAssets() {
+    const key = getProjectStorageKey();
+    const assets = new Set();
+    try {
+      const stored = sessionStorage.getItem(key);
+      if (stored) {
+        JSON.parse(stored).forEach(code => assets.add(code));
+      }
+    } catch (_) {}
+    return assets;
+  }
+
+  function addKnownProjectAsset(code) {
+    if (!code) return;
+    const assets = getKnownProjectAssets();
+    assets.add(code);
+    try {
+      sessionStorage.setItem(getProjectStorageKey(), JSON.stringify([...assets]));
+    } catch (_) {}
+  }
+
+  function isAlreadyInProjectCanvas() {
+    const href = window.location.href || '';
+    const isProjUrl = /(?:flow\.google\.com)\/(?:project|projects|canvas)\//i.test(href) ||
+                      href.includes('/project/');
+    if (isProjUrl) return true;
+
+    const editor = typeof findPromptEditor === 'function' ? findPromptEditor() :
+      document.querySelector('[contenteditable="true"][data-slate-editor="true"], .ProseMirror[contenteditable="true"]');
+    return Boolean(editor && (typeof isElementVisible === 'function' ? isElementVisible(editor) : true));
+  }
 
   // ─────────────────────────────────────────────────────────────
   // Flow 비디오 모델 매칭 헬퍼 — 언어 무관 (ko/ja/en UI 모두 대응)
@@ -2454,10 +2493,43 @@ if(typeof console!=="undefined"){console.log=function(){};console.warn=function(
     // ★ v1.1.8 fix: 모달 항목 로드 대기 (모달 열린 직후 항목 미준비 → 클릭 빗나감)
     await waitForAssetModalItems(4000);
     const items = modal.querySelectorAll('div[data-item-index]');
-    const target = [...items].find(item => {
+    // 1순위: 파일명 접두사 (예: MCR_hero.jpg, MCR_custom.jpg)
+    let target = [...items].find(item => {
       const imgAlt = item.querySelector('img')?.alt ?? '';
       return imgAlt.startsWith(charCode + '_');
     });
+
+    // 2순위: alt 또는 텍스트 내 캐릭터 코드 (MCR, SC1 등)
+    if (!target) {
+      const codeRegex = new RegExp(`(^|[^a-zA-Z0-9])${charCode}([^a-zA-Z0-9]|$)`, 'i');
+      target = [...items].find(item => {
+        const imgAlt = (item.querySelector('img')?.alt ?? '').trim();
+        const label = (item.textContent || '').trim();
+        return codeRegex.test(imgAlt) || codeRegex.test(label);
+      });
+    }
+
+    // 3순위: 캐릭터 이름 매칭 (settings.characterRefAssets)
+    if (!target && typeof _activePipelineSettings !== 'undefined' && _activePipelineSettings?.characterRefAssets?.[charCode]?.name) {
+      const charName = String(_activePipelineSettings.characterRefAssets[charCode].name).trim().toLowerCase();
+      if (charName) {
+        target = [...items].find(item => {
+          const imgAlt = (item.querySelector('img')?.alt ?? '').toLowerCase();
+          const label = (item.textContent || '').toLowerCase();
+          return imgAlt.includes(charName) || label.includes(charName);
+        });
+      }
+    }
+
+    // 4순위: 순서 기반 폴백 (MCR=0, SC1=1, SC2=2 ...)
+    if (!target && items.length > 0) {
+      const order = getCharOrder(charCode);
+      if (order >= 0 && order < items.length) {
+        target = items[order];
+        log('CHAR_REF', `모달에서 ${charCode} 항목 순서(${order}) 폴백 선택`);
+      }
+    }
+
     if (!target) {
       log('CHAR_REF', `모달에서 ${charCode} 항목 없음 — 폴백 스킵 (일부만 첨부 가능)`, { itemCount: items.length });
       return false;
@@ -3946,6 +4018,7 @@ if(typeof console!=="undefined"){console.log=function(){};console.warn=function(
         chunk++;
       }
     };
+    _activePipelineSettings = settings;
     log('START', 'runFlowPipeline', {
       promptsCount: prompts.length,
       mode: settings?.mode,
@@ -3976,10 +4049,10 @@ if(typeof console!=="undefined"){console.log=function(){};console.warn=function(
         if (isVideoMode) {
           log('STEP 1', '비디오 모드 — runVideoPipeline 내 매 프롬프트마다 새 프로젝트 생성', { mode: settings?.mode, isFactoryVideoPhase: !!settings?.isFactoryVideoPhase });
         } else {
-          // ★ 如果已经在项目画板页面（/project/.../edit/...），直接在当前画板继续生成
-          const isAlreadyInProject = window.location.href.includes('/project/') && window.location.href.includes('/edit/');
+          // ★ 如果已经在项目画板页面（/project/... 或画布编辑器就绪），直接在当前画板继续生成
+          const isAlreadyInProject = isAlreadyInProjectCanvas();
           if (isAlreadyInProject) {
-            log('STEP 1', '已在 Flow 项目画板中，直接复用当前项目');
+            log('STEP 1', '已在 Flow 项目画板中，直接复用当前项目进行闭环生成');
           } else {
             log('STEP 1', '새 프로젝트 버튼 대기');
             const newProjBtn = await waitForNewProjectButton();
@@ -3993,14 +4066,25 @@ if(typeof console!=="undefined"){console.log=function(){};console.warn=function(
           }
 
           if (useCharRef) {
-            log('CHAR_REF', '캐릭터 레퍼런스 file input 업로드');
-            const ok = await uploadCharRefViaFileInput(settings.characterRefAssets);
-            if (ok) {
-              await clearAttachedImageFromInput();
-              const charCount = Object.keys(settings.characterRefAssets || {}).length;
-              const expectedTiles = charCount;
-              await waitForCharRefTilesInGallery(expectedTiles);
-              log('CHAR_REF', `레퍼런스 tile ${expectedTiles}개(캐릭터 ${charCount}명) 등록 완료 → 다음 단계`);
+            // ★ 核心优化：如果在同一画板复用，且角色已在当前画板就绪，跳过重复上传
+            const neededCharCodes = Object.keys(settings.characterRefAssets || {});
+            const knownAssets = getKnownProjectAssets();
+            const allAlreadyInCanvas = isAlreadyInProject && neededCharCodes.length > 0 &&
+              neededCharCodes.every(code => knownAssets.has(code));
+
+            if (allAlreadyInCanvas) {
+              log('CHAR_REF', '角色参考已在当前 Flow 画板中就绪，跳过 base64 重复上传，直接闭环复用');
+            } else {
+              log('CHAR_REF', '캐릭터 레퍼런스 file input 업로드');
+              const ok = await uploadCharRefViaFileInput(settings.characterRefAssets);
+              if (ok) {
+                neededCharCodes.forEach(code => addKnownProjectAsset(code));
+                await clearAttachedImageFromInput();
+                const charCount = Object.keys(settings.characterRefAssets || {}).length;
+                const expectedTiles = charCount;
+                await waitForCharRefTilesInGallery(expectedTiles);
+                log('CHAR_REF', `레퍼런스 tile ${expectedTiles}개(캐릭터 ${charCount}명) 등록 완료 → 다음 단계`);
+              }
             }
           }
           if (settings?.mode === 'textToImage' && settings?.usePromptRefAssets) {
@@ -4436,6 +4520,9 @@ if(typeof console!=="undefined"){console.log=function(){};console.warn=function(
 
         log('CHAR_REF_PARSE', `[5/6] 파싱 완료 → base64 변환·전송 시작`, { thumbItems수: thumbItems.length });
         if (thumbItems.length > 0) {
+          (charRefPayloads || []).forEach(p => {
+            if (p?.code) addKnownProjectAsset(p.code);
+          });
           sendCharRefImagesToSidepanel(thumbItems, {});
         } else if (settings?.mode === 'factory') {
           // 팩토리 모드: thumbItems 0개여도 CHAR_REF_IMAGES_READY 전송 → charRefReadyResolve 호출로 스피너 해제
@@ -4571,7 +4658,20 @@ if (!window.__flowContentListenerRegistered) {
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'PING') {
-      sendResponse({ alive: true, state: controlState });
+      sendResponse({ alive: true, inProject: isAlreadyInProjectCanvas(), state: controlState });
+      return true;
+    }
+
+    if (message.type === 'CHECK_IN_PROJECT') {
+      const inProject = isAlreadyInProjectCanvas();
+      const editor = typeof findPromptEditor === 'function' ? findPromptEditor() : null;
+      sendResponse({
+        alive: true,
+        inProject,
+        hasEditor: !!editor,
+        state: controlState,
+        url: window.location.href
+      });
       return true;
     }
 

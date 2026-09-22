@@ -1,4 +1,4 @@
-if(typeof console!=="undefined"){console.log=function(){};console.warn=function(){};console.error=function(){};}
+if(typeof console!=="undefined" && (typeof globalThis!=="undefined" && globalThis.__FLOW_SILENT__ === true)){console.log=function(){};console.warn=function(){};console.error=function(){};}
 /**
  * flow-selectors.js — FLOW Factory DOM 셀렉터
  * PDF HTML 전수 분석 기반 확정 셀렉터 (2026-03-07)

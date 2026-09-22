@@ -1,4 +1,4 @@
-if(typeof console!=="undefined"){console.log=function(){};console.warn=function(){};console.error=function(){};}
+if(typeof console!=="undefined" && (typeof globalThis!=="undefined" && globalThis.__FLOW_SILENT__ === true)){console.log=function(){};console.warn=function(){};console.error=function(){};}
 /**
  * settings.js — 설정 관리 유틸리티
  * chrome.storage.local 기반 (localStorage 대체)

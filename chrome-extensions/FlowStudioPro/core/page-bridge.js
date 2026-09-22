@@ -1,4 +1,4 @@
-if(typeof console!=="undefined"){console.log=function(){};console.warn=function(){};console.error=function(){};}
+if(typeof console!=="undefined" && (typeof globalThis!=="undefined" && globalThis.__FLOW_SILENT__ === true)){console.log=function(){};console.warn=function(){};console.error=function(){};}
 // MAIN world: Slate __reactFiber 직접 접근
 // CSP 때문에 inline script inject 불가 → 별도 파일로 분리
 

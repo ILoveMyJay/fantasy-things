@@ -1,4 +1,4 @@
-if(typeof console!=="undefined"){console.log=function(){};console.warn=function(){};console.error=function(){};}
+if(typeof console!=="undefined" && (typeof globalThis!=="undefined" && globalThis.__FLOW_SILENT__ === true)){console.log=function(){};console.warn=function(){};console.error=function(){};}
 /**
  * filename.js — 파일명 생성 유틸리티
  * plan3.0 섹션 10.2 기반

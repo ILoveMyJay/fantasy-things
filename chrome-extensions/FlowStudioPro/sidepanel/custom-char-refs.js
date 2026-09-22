@@ -1,4 +1,4 @@
-if(typeof console!=="undefined"){console.log=function(){};console.warn=function(){};console.error=function(){};}
+if(typeof console!=="undefined" && (typeof globalThis!=="undefined" && globalThis.__FLOW_SILENT__ === true)){console.log=function(){};console.warn=function(){};console.error=function(){};}
 // ============================================================
 // CUSTOM CHARACTER REFERENCES (PRO 2.0)
 // - 6 slots (MCR, SC1~SC5): image upload + prompt input

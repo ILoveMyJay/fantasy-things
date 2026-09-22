@@ -1,4 +1,4 @@
-if(typeof console!=="undefined"){console.log=function(){};console.warn=function(){};console.error=function(){};}
+if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=function(){};console.warn=function(){};console.error=function(){};}
 /**
  * sidepanel.js — AI4Next Side Panel Logic
  */
@@ -1009,6 +1009,61 @@ function isFlowTabUrl(url) {
     return url.includes('flow.google.com');
 }
 
+/** Flow 프로젝트/화판 URL인지 확인 (flow.google.com/project/..., /projects/..., /canvas/...) */
+function isFlowProjectUrl(url) {
+    if (!url || typeof url !== 'string') return false;
+    return /flow\.google\.com\/(?:project|projects|canvas)\//i.test(url) ||
+           (url.includes('flow.google.com') && url.includes('/project/'));
+}
+
+/** 实时检测并更新顶栏 Google Flow 画板连接状态指示条 */
+async function updateFlowCanvasStatus() {
+    const chip = document.getElementById('flowCanvasStatusChip');
+    const textEl = document.getElementById('flowCanvasStatusText');
+    if (!chip || !textEl) return;
+
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const url = tab?.url || '';
+        if (!isFlowTabUrl(url)) {
+            chip.className = 'flow-status-chip disconnected';
+            textEl.textContent = '未连接 Flow';
+            chip.title = '未在当前标签页打开 Flow，点击打开 flow.google.com';
+            return;
+        }
+
+        let isProject = isFlowProjectUrl(url);
+        if (!isProject && tab?.id) {
+            try {
+                const res = await chrome.tabs.sendMessage(tab.id, { type: 'CHECK_IN_PROJECT' });
+                if (res?.inProject) isProject = true;
+            } catch (_) {}
+        }
+
+        const closedLoopDetail = document.getElementById('closedLoopDetailText');
+        if (isProject) {
+            const m = url.match(/\/project\/([a-zA-Z0-9_-]+)/);
+            const shortId = m ? m[1].slice(0, 8) : '画板中';
+            chip.className = 'flow-status-chip connected-project';
+            textEl.textContent = `画板已就绪 (${shortId})`;
+            chip.title = '已连接 Flow 项目画板：角色定妆图与场景分镜将在同一画板中闭环生成';
+            if (closedLoopDetail) {
+                closedLoopDetail.textContent = `已锁定 Flow 画板 (${shortId})。分镜将在此画板内连续生成，自动复用画板角色资产，无需跨项目重复上传。`;
+            }
+        } else {
+            chip.className = 'flow-status-chip connected-home';
+            textEl.textContent = 'Flow 首页就绪';
+            chip.title = '当前位于 Flow 首页，启动任务将自动创建画板并全程闭环';
+            if (closedLoopDetail) {
+                closedLoopDetail.textContent = '当前位于 Flow 首页。启动任务将自动创建新画板，并在后续生成中全程闭环锁定。';
+            }
+        }
+    } catch (_) {
+        chip.className = 'flow-status-chip disconnected';
+        textEl.textContent = '检测画板中...';
+    }
+}
+
 /** Flow 첫 화면 URL (로케일 없음 — 접속 시 사용자 언어로 자동 전환) */
 const FLOW_HOME_URL = 'https://flow.google.com/';
 
@@ -1039,6 +1094,7 @@ let lastCheckedTabUrl = '';
 async function checkFlowTabAndShowModal() {
     const mainScreen = document.getElementById('main-screen');
     const modal = document.getElementById('flow-only-modal');
+    updateFlowCanvasStatus().catch(() => {});
     if (!modal || !mainScreen || mainScreen.classList.contains('hidden')) return;
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -1068,16 +1124,22 @@ function initFlowOnlyModal() {
         modal.classList.add('hidden');
     });
 
-    chrome.tabs.onActivated.addListener(() => checkFlowTabAndShowModal());
+    chrome.tabs.onActivated.addListener(() => {
+        checkFlowTabAndShowModal();
+        updateFlowCanvasStatus().catch(() => {});
+    });
     chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
         if (!changeInfo.url) return;
         chrome.tabs.query({ active: true, currentWindow: true }).then(([active]) => {
             if (!active || active.id !== tabId) return;
             const newUrl = changeInfo.url;
+            updateFlowCanvasStatus().catch(() => {});
             if (isFlowTabUrl(lastCheckedTabUrl) && isFlowTabUrl(newUrl)) return; // 같은 Flow 내 이동 → 검사 생략
             checkFlowTabAndShowModal();
         });
     });
+
+    updateFlowCanvasStatus().catch(() => {});
 }
 
 // ========== 비디오 생성 전 초기 설정 안내 모달 (Prompt→Video, Image→Video에서만) ==========
@@ -1751,6 +1813,108 @@ function getModeName(mode) {
     return labels[mode] || mode;
 }
 
+function switchStudioStep(stepNumber) {
+    const step = parseInt(stepNumber, 10) || 1;
+    APP.currentStudioStep = step;
+
+    // Update stepper tabs
+    document.querySelectorAll('.studio-pipeline-stepper .stepper-step').forEach(btn => {
+        const btnStep = parseInt(btn.dataset.step, 10);
+        const isActive = btnStep === step;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+
+    const isScriptMode = APP.mode === 'scriptToImage' || APP.mode === 'factory';
+    const step1 = document.getElementById('stepContent1');
+    const step2 = document.getElementById('stepContent2');
+    const step3 = document.getElementById('stepContent3');
+
+    const queueSec = document.getElementById('section-queue');
+    const actionsSec = document.getElementById('section-actions');
+    const progressSec = document.getElementById('section-progress');
+    const completionSec = document.getElementById('section-completion');
+    const flowSettingsSec = document.getElementById('section-flow-settings');
+    const factoryVideoSec = document.getElementById('section-factory-video');
+
+    const qSlot2 = document.getElementById('queueSlotStep2');
+    const qSlot3 = document.getElementById('queueSlotStep3');
+    const qSlotDef = document.getElementById('queueDefaultSlot');
+
+    const aSlot3 = document.getElementById('actionsSlotStep3');
+    const aSlotDef = document.getElementById('actionsDefaultSlot');
+
+    const pSlot3 = document.getElementById('progressSlotStep3');
+    const pSlotDef = document.getElementById('progressDefaultSlot');
+
+    const cSlot3 = document.getElementById('completionSlotStep3');
+    const cSlotDef = document.getElementById('completionDefaultSlot');
+
+    const fsSlot2 = document.getElementById('flowSettingsSlotStep2');
+    const fsSlotDef = document.getElementById('flowSettingsDefaultSlot');
+
+    const vSlot3 = document.getElementById('videoSlotStep3');
+    const vSlotDef = document.getElementById('videoDefaultSlot');
+
+    if (isScriptMode) {
+        if (step1) step1.classList.toggle('hidden', step !== 1);
+        if (step2) step2.classList.toggle('hidden', step !== 2);
+        if (step3) step3.classList.toggle('hidden', step !== 3);
+
+        // Queue placement: in Step 2 for editing, Step 3 for live monitoring
+        if (queueSec) {
+            if (step === 2 && qSlot2) {
+                qSlot2.appendChild(queueSec);
+            } else if (step === 3 && qSlot3) {
+                qSlot3.appendChild(queueSec);
+            }
+        }
+
+        // Action Buttons placement (Hero Render Button): only in Step 3
+        if (actionsSec) {
+            if (step === 3 && aSlot3) {
+                aSlot3.appendChild(actionsSec);
+                actionsSec.classList.remove('hidden');
+            } else {
+                actionsSec.classList.add('hidden');
+            }
+        }
+
+        // Flow Settings placement: in Step 2 for configuring parameters
+        if (flowSettingsSec) {
+            if (step === 2 && fsSlot2) {
+                fsSlot2.appendChild(flowSettingsSec);
+                flowSettingsSec.classList.remove('hidden');
+            } else {
+                flowSettingsSec.classList.add('hidden');
+            }
+        }
+
+        // Progress & Completion & Video placement in Step 3
+        if (progressSec && pSlot3) pSlot3.appendChild(progressSec);
+        if (completionSec && cSlot3) cSlot3.appendChild(completionSec);
+        if (factoryVideoSec && vSlot3) vSlot3.appendChild(factoryVideoSec);
+    } else {
+        if (step1) step1.classList.add('hidden');
+        if (step2) step2.classList.add('hidden');
+        if (step3) step3.classList.add('hidden');
+
+        if (queueSec && qSlotDef) qSlotDef.appendChild(queueSec);
+        if (actionsSec && aSlotDef) {
+            aSlotDef.appendChild(actionsSec);
+            actionsSec.classList.remove('hidden');
+        }
+        if (flowSettingsSec && fsSlotDef) {
+            fsSlotDef.appendChild(flowSettingsSec);
+            flowSettingsSec.classList.remove('hidden');
+        }
+        if (progressSec && pSlotDef) pSlotDef.appendChild(progressSec);
+        if (completionSec && cSlotDef) cSlotDef.appendChild(completionSec);
+        if (factoryVideoSec && vSlotDef) vSlotDef.appendChild(factoryVideoSec);
+    }
+}
+window.switchStudioStep = switchStudioStep;
+
 function updateModeUI() {
     // 同步顶层工作室导航按钮高亮状态 (Flow Studio Pro)
     $$('.studio-tab-btn').forEach(btn => {
@@ -1760,12 +1924,21 @@ function updateModeUI() {
         btn.setAttribute('aria-selected', isMatched ? 'true' : 'false');
     });
 
+    // ★ 步骤条显示逻辑
+    const stepper = document.getElementById('studioPipelineStepper');
+    if (APP.mode === 'scriptToImage' || APP.mode === 'factory') {
+        stepper?.classList.remove('hidden');
+        switchStudioStep(APP.currentStudioStep || 1);
+    } else {
+        stepper?.classList.add('hidden');
+        switchStudioStep(1);
+    }
+
     // ★ P2I v1.6: input-styleImage 제거 (중복 UI 삭제). 설정 탭 스타일 자동 연동
     const inputs = ['input-scriptToImage', 'input-textPrompt', 'input-imageToVideo'];
     inputs.forEach(id => $(`#${id}`)?.classList.add('hidden'));
 
     // 이전 모드에서 남은 생성 결과 섹션 숨기기 (다른 모드일 때만)
-    // ★ 현재 모드에 해당하는 데이터가 있으면 UI 복원
     const isScriptMode = APP.mode === 'scriptToImage' || APP.mode === 'factory';
     if (!isScriptMode) {
         $('#charRefsSection')?.classList.add('hidden');
@@ -1782,10 +1955,7 @@ function updateModeUI() {
     switch (APP.mode) {
         case 'scriptToImage':
             $('#input-scriptToImage')?.classList.remove('hidden');
-            // ★ 대본투이미지: 이미지스타일은 설정 탭에서 선택. 스타일 참조 이미지/스타일 선택 UI 미표시
-            // (캐릭터레퍼런스 첨부 시 재사용 예정: input-styleImage, attachStyleRow, controlStyleSelect 레이아웃)
-            $('#btn-full-auto')?.classList.add('hidden');  // ★ scriptToImage에서는 FULL AUTO 숨김
-            // ★ 모드 복귀 시 기존 데이터가 있으면 UI 복원
+            $('#btn-full-auto')?.classList.add('hidden');
             if (APP.characterRefs && APP.characterRefs.length > 0) {
                 $('#charRefsSection')?.classList.remove('hidden');
                 renderCharacterRefs(APP.characterRefs);
@@ -3241,6 +3411,41 @@ function initSettingsHandlers() {
 
 // ========== CONTROL HANDLERS ==========
 function initControlHandlers() {
+    // 顶栏新建画板 & 状态检测
+    $('#btnHeaderNewProject')?.addEventListener('click', async () => {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id && isFlowTabUrl(tab.url)) {
+            await chrome.tabs.update(tab.id, { url: 'https://flow.google.com/' });
+            showToast('已返回 Flow 首页，准备创建独立新画板', 'info');
+        } else {
+            chrome.tabs.create({ url: 'https://flow.google.com/' });
+        }
+    });
+
+    $('#flowCanvasStatusChip')?.addEventListener('click', async () => {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab || !isFlowTabUrl(tab.url)) {
+            chrome.tabs.create({ url: 'https://flow.google.com/' });
+        } else {
+            await updateFlowCanvasStatus();
+            showToast('已检测并同步 Flow 画板状态', 'info');
+        }
+    });
+
+    // 步骤条点击
+    document.querySelectorAll('.studio-pipeline-stepper .stepper-step').forEach(btn => {
+        btn.addEventListener('click', () => {
+            switchStudioStep(btn.dataset.step);
+        });
+    });
+
+    // 步骤间跳转按钮
+    $('#btnNextToStep2')?.addEventListener('click', () => switchStudioStep(2));
+    $('#btnNextToStep3')?.addEventListener('click', () => switchStudioStep(3));
+    $('#btnNextToStep3Bottom')?.addEventListener('click', () => switchStudioStep(3));
+    $('#btnBackToStep1')?.addEventListener('click', () => switchStudioStep(1));
+    $('#btnBackToStep2')?.addEventListener('click', () => switchStudioStep(2));
+
     // Script actions: EDIT(focus), DEL(clear), SAVE(save draft)
     $('#btn-script-edit')?.addEventListener('click', () => $('#scriptInput')?.focus());
     $('#btn-script-del')?.addEventListener('click', () => {
@@ -3561,10 +3766,21 @@ function initControlHandlers() {
                 showToast(`${prompts.length} ${" prompts generated"}`, 'success');
             }
 
-            // ★ 프롬프트 생성 완료 → 생성된 프롬프트 섹션으로 스크롤
-            setTimeout(() => {
-                $('#generatedPromptsSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 300);
+            // ★ 프롬프트 생성 완료
+            if (APP.mode === 'scriptToImage') {
+                if (characterRefs && characterRefs.length > 0) {
+                    switchStudioStep(1);
+                    setTimeout(() => {
+                        $('#charRefsSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 300);
+                    showToast(`✨ 解析出 ${prompts.length} 个分镜镜头与 ${characterRefs.length} 位角色，请在下方生成角色定妆图`, 'success', 5000);
+                } else {
+                    switchStudioStep(2);
+                    setTimeout(() => {
+                        $('#generatedPromptsSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 300);
+                }
+            }
 
             // ★ 대본투이미지/팩토리에서 FULL AUTO가 아니면 캐릭터 레퍼런스는 수동 생성만 — 스피너 해제·버튼 복구
             if (!APP.factory.isFullAuto && (APP.mode === 'factory' || APP.mode === 'scriptToImage')) {
@@ -4725,7 +4941,7 @@ async function handleGenerateAllRefs() {
     APP._charRefGenStopRequested = false;
 
     try {
-        await sendPayloadsToContentScript(tab, refPayloads);
+        await sendPayloadsToContentScript(tab, refPayloads, false, false, { isCharRefGeneration: true, styleImage: null });
     } catch (err) {
         if (charRefTimeoutId) clearTimeout(charRefTimeoutId);
         APP.factory.charRefGenerationTimeoutId = null;
@@ -6284,15 +6500,22 @@ async function ensureContentScriptLoaded(tab) {
 async function sendPayloadsToContentScript(tab, payloads, isRetry = false, skipNavigation = false, extraSettings = {}) {
     let updatedTab = tab;
     if (!skipNavigation) {
-        // ★ 如果当前标签页已经在 Flow 项目编辑画板中（/project/.../edit/...），直接保留在当前项目，避免跳回首页
-        const isCurrentProjectTab = tab?.url && tab.url.includes('flow.google.com/project/') && tab.url.includes('/edit/');
-        if (!isCurrentProjectTab) {
+        // ★ 核心架构修复：准确判断当前标签页是否已在 Flow 项目画板中（支持 /project/ 任意 ID，无需 /edit/）
+        let isCurrentProject = isFlowProjectUrl(tab?.url);
+        if (!isCurrentProject && tab?.id) {
+            try {
+                const res = await chrome.tabs.sendMessage(tab.id, { type: 'CHECK_IN_PROJECT' });
+                if (res?.inProject) isCurrentProject = true;
+            } catch (_) {}
+        }
+        if (!isCurrentProject) {
             const navigated = await navigateToFlowHomeAndWait(tab);
             if (!navigated) {
                 throw new Error("Content Script injection failed. Please refresh the Flow page (flow.google.com).");
             }
             updatedTab = await chrome.tabs.get(tab.id);
         } else {
+            console.log('🎬 [FLOW STUDIO PRO] 复用当前 Flow 项目画板，闭环同项目生成:', tab?.url);
             updatedTab = await chrome.tabs.get(tab.id);
         }
     } else {

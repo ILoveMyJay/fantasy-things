@@ -1,4 +1,4 @@
-if(typeof console!=="undefined"){console.log=function(){};console.warn=function(){};console.error=function(){};}
+if(typeof console!=="undefined" && (typeof globalThis!=="undefined" && globalThis.__FLOW_SILENT__ === true)){console.log=function(){};console.warn=function(){};console.error=function(){};}
 // core/music-prompts.js
 // ═══════════════════════════════════════════════════════════════
 // FLOW FACTORY PRO — 음악 가사 분할 9종 장르 프롬프트 템플릿
