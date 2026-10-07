@@ -13,8 +13,8 @@ const SELECTORS = {
   SETTINGS_BTN: null,
 
   // STEP 3~5
-  GRID_MODE: 'button[aria-label="Grid"]',
-  GRID_SMALL: 'button[aria-label="작게"]',
+  GRID_MODE: 'button[aria-label="Grid"], button[aria-label="网格"], button[aria-label="그리드"]',
+  GRID_SMALL: 'button[aria-label="Small"], button[aria-label="小"], button[aria-label="较小"], button[aria-label="작게"]',
   // STEP 5: 제출 시 프롬프트 지우기 → 사용 (findClearOnSubmitEnableButton 사용)
   CLEAR_ON_SUBMIT: null,
 
@@ -33,7 +33,8 @@ const SELECTORS = {
 
   MODEL_NB_2_LITE: 'Nano Banana 2 Lite',
   MODEL_NB_PRO: 'Nano Banana Pro',
-  MODEL_NB_2: 'Nano Banana 2',
+  MODEL_NB_2: 'Nano Banana 2.1',
+  MODEL_NB_2_LEGACY: 'Nano Banana 2',
 
   // STEP 14~15
   PROMPT_INPUT: '[contenteditable="true"][data-slate-editor="true"], .ProseMirror[contenteditable="true"]',

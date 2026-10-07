@@ -542,6 +542,8 @@ function findGridTab() {
   return (
     document.querySelector('[aria-controls$="-content-grid"][role="tab"]') ??
     document.querySelector('[aria-label="Grid"][role="tab"]') ??
+    document.querySelector('[aria-label="网格"][role="tab"]') ??
+    document.querySelector('[aria-label="画板网格"][role="tab"]') ??
     document.querySelector('[aria-label="그리드"][role="tab"]')
   );
 }
@@ -550,25 +552,27 @@ function findSmallTab() {
   return (
     document.querySelector('[aria-controls$="-content-SMALL"][role="tab"]') ??
     document.querySelector('[aria-label="Small"][role="tab"]') ??
+    document.querySelector('[aria-label="小"][role="tab"]') ??
+    document.querySelector('[aria-label="较小"][role="tab"]') ??
     document.querySelector('[aria-label="작게"][role="tab"]')
   );
 }
 
-/** 제출 시 프롬프트 지우기 → "사용"/"On" 탭 (마우스오버·타일세부정보와 구분, 한/영 지원) */
+/** 提交时清除提示词选项卡 (支持简体中文 / 英文 / 韩文) */
 function findClearPromptTab() {
-  const useSelectors = '[aria-label="사용"][role="tab"], [aria-label="Use"][role="tab"], [aria-label="On"][role="tab"]';
+  const useSelectors = '[aria-label="开启"][role="tab"], [aria-label="启用"][role="tab"], [aria-label="使用"][role="tab"], [aria-label="Use"][role="tab"], [aria-label="On"][role="tab"], [aria-label="사용"][role="tab"]';
   const useTabs = document.querySelectorAll(useSelectors);
   for (const tab of useTabs) {
     let el = tab.parentElement;
     for (let i = 0; i < 8 && el; i++) {
       const t = (el.textContent || '').toLowerCase();
-      const isClearPromptRow = t.includes('제출 시 프롬프트 지우기') || t.includes('clear prompt on submit');
-      const isOtherRow = t.includes('마우스 오버') || t.includes('타일 세부정보') || t.includes('sound') || t.includes('show tile details');
+      const isClearPromptRow = t.includes('提交时清除提示') || t.includes('清除提示') || t.includes('clear prompt on submit') || t.includes('제출 시 프롬프트 지우기');
+      const isOtherRow = t.includes('鼠标悬停') || t.includes('声音') || t.includes('图块详情') || t.includes('sound') || t.includes('show tile details');
       if (isClearPromptRow && !isOtherRow) return tab;
       el = el.parentElement;
     }
   }
-  return document.querySelector('[aria-label="사용"][role="tab"]') ?? document.querySelector('[aria-label="Use"][role="tab"]') ?? document.querySelector('[aria-label="On"][role="tab"]');
+  return document.querySelector('[aria-label="开启"][role="tab"]') ?? document.querySelector('[aria-label="使用"][role="tab"]') ?? document.querySelector('[aria-label="Use"][role="tab"]') ?? document.querySelector('[aria-label="On"][role="tab"]');
 }
 
 function _queryAll(selector, root = document) {
@@ -715,16 +719,22 @@ function findModelDropdownBtn() {
     ?.closest('button[aria-haspopup="menu"]') || null;
 }
 
-const MODEL_NAMES = ['Nano Banana 2 Lite', 'Nano Banana Pro', 'Nano Banana 2', 'Imagen 4'];
+const MODEL_NAMES = ['Nano Banana 2.1', 'Nano Banana 2 Lite', 'Nano Banana Pro', 'Nano Banana 2', 'Imagen 4'];
 
 function findModelByName(targetModel) {
   const normalize = (v) => String(v || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const target = normalize(targetModel);
-  const buttons = [...document.querySelectorAll('button')].filter(isElementVisible);
-  return buttons.find(btn => normalize(btn.textContent) === target)
-    || buttons.find(btn => {
+  let target = normalize(targetModel);
+  if (target === 'nano banana 2') {
+    target = 'nano banana 2.1';
+  }
+  const items = [...document.querySelectorAll('button, [role="menuitem"], [role="option"]')].filter(isElementVisible);
+  return items.find(btn => normalize(btn.textContent) === target)
+    || items.find(btn => normalize(btn.textContent).includes(target))
+    || items.find(btn => {
       const text = normalize(btn.textContent);
-      if (target === 'nano banana 2') return /\bnano banana 2\b/i.test(text) && !/\blite\b/i.test(text);
+      if (target.includes('nano banana 2')) {
+        return /\bnano banana 2(\.1)?\b/i.test(text) && !/\blite\b/i.test(text);
+      }
       return text.includes(target);
     });
 }

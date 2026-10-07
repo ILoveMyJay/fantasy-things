@@ -79,6 +79,11 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
   //   폴백: 후보 개수 != 3이면 영문 suffix 매칭 시도
   // ─────────────────────────────────────────────────────────────
   const VEO_ORDER_INDEX = { 'Lite': 0, 'Fast': 1, 'Quality': 2 };
+  const VEO_ZH_KEYWORDS = {
+    'Lite': /轻量|精简|lite|라이트/i,
+    'Fast': /快速|高速|fast|빠름/i,
+    'Quality': /优质|品质|高质量|画质|quality|품질/i
+  };
   function pickVideoModelItem(items, selectedModel) {
     const normalizedModel = (selectedModel || 'Veo 3.1 Lite').trim();
     const normalizedLower = normalizedModel.toLowerCase();
@@ -93,11 +98,11 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
     const suffix = normalizedModel.split(' ').pop(); // 'Lite'|'Fast'|'Quality'
     const wanted = VEO_ORDER_INDEX[suffix] ?? 0; // default Lite (cheapest)
 
-    // 1) Veo 3.1 prefix로 보이는 메뉴 후보 필터링
+    // 1) Veo 3.1 / Veo prefix로 보이는 메뉴 후보 필터링
     const candidates = items.filter(el => {
       if (!elementIsVisible(el)) return false;
       const tx = (el.textContent || '').trim();
-      return tx.includes('Veo 3.1');
+      return tx.includes('Veo 3.1') || tx.includes('Veo');
     });
 
     // 2) 정확히 3개면 순서 기반 매칭 (가장 안전, 언어 무관)
@@ -105,11 +110,18 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
       return candidates[wanted] || candidates[0] || candidates[1];
     }
 
-    // 3) 개수가 예상과 다르면 영문 suffix 매칭 (영어 UI 유저)
+    // 3) 中文/多语言关键词正则匹配
+    const regex = VEO_ZH_KEYWORDS[suffix];
+    if (regex) {
+      const byKw = candidates.find(el => regex.test((el.textContent || '').trim()));
+      if (byKw) return byKw;
+    }
+
+    // 4) 영문 suffix 매칭 (영어 UI 유저)
     const byEnglish = candidates.find(el => (el.textContent || '').includes(suffix));
     if (byEnglish) return byEnglish;
 
-    // 4) 최종 폴백: 첫 번째 Veo 3.1 후보 (대개 Lite 또는 Fast)
+    // 5) 최종 폴백: 첫 번째 Veo 3.1 후보 (대개 Lite 또는 Fast)
     return candidates[0] || null;
   }
 
@@ -133,11 +145,11 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
     return document.querySelector(`[aria-controls$="-content-${upper}"][role="tab"]`)
       || document.querySelector(`[aria-label="${mode}"][role="tab"]`)
       || document.querySelector(`button[id*="trigger-${upper}"]`)
-      || [...document.querySelectorAll('button[role="radio"]')].find(btn =>
+      || [...document.querySelectorAll('button[role="radio"], button[role="tab"], button, [role="menuitem"], [role="option"]')].find(btn =>
         elementIsVisible(btn) && (btn.querySelector('.google-symbols')?.textContent.trim() === icon
         || btn.textContent.trim().toLowerCase() === mode.toLowerCase()
-        || (mode === 'Image' && /图片|image/i.test(btn.textContent))
-        || (mode === 'Video' && /视频|video/i.test(btn.textContent))
+        || (mode === 'Image' && /(?:图片|图像|image|photo)/i.test(btn.textContent))
+        || (mode === 'Video' && /(?:视频|video|movie)/i.test(btn.textContent))
         )
       )
       || null;
@@ -1270,17 +1282,46 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
     await simulateClick(modelSettingsBtn);
     await sleep(800);
     const videoTab = findModeButton('Video');
-    if (!videoTab) throw new Error('[视频] 未找到视频(VIDEO)标签页');
-    await simulateClick(videoTab);
-    await sleep(300);
-    const assetTab = document.querySelector('[aria-controls$="-content-VIDEO_REFERENCES"][role="tab"]') ?? document.querySelector('[aria-label="Assets"][role="tab"]') ?? document.querySelector('[aria-label="애셋"][role="tab"]') ?? document.querySelector('[aria-controls*="VIDEO_REFERENCES"]');
+    if (videoTab) {
+      log('VIDEO', 'VIDEO 标签页选择');
+      await simulateClick(videoTab);
+      await sleep(300);
+    } else {
+      log('VIDEO', '⚠️ 未显式找到视频(VIDEO)标签页，检测是否已在视频模式并继续');
+    }
+    const assetTab = (
+      document.querySelector('[aria-controls$="-content-VIDEO_REFERENCES"][role="tab"]') ??
+      document.querySelector('[aria-label="Assets"][role="tab"]') ??
+      document.querySelector('[aria-label="애셋"][role="tab"]') ??
+      document.querySelector('[aria-label="素材"][role="tab"]') ??
+      document.querySelector('[aria-label="资产"][role="tab"]') ??
+      document.querySelector('[aria-controls*="VIDEO_REFERENCES"]') ??
+      [...document.querySelectorAll('[role="tab"]')].find(el => /assets|素材|资产|애셋/i.test(el.textContent || el.getAttribute('aria-label') || ''))
+    );
     if (assetTab) { await simulateClick(assetTab); await sleep(300); }
     const dirSuffix = s.direction === 'portrait' ? 'PORTRAIT' : 'LANDSCAPE';
     const videoAspectRatio = s.aspectRatio || (dirSuffix === 'PORTRAIT' ? '9:16' : '16:9');
-    const dirTab = findVisibleChoiceByExactText(videoAspectRatio) ?? document.querySelector(`[aria-controls$="-content-${dirSuffix}"][role="tab"]`) ?? document.querySelector(`[aria-label="${dirSuffix === 'PORTRAIT' ? 'Portrait mode' : 'Landscape mode'}"][role="tab"]`) ?? document.querySelector(`button[id*="trigger-${dirSuffix}"]`);
-    if (!dirTab) throw new Error(`[VIDEO] ${videoAspectRatio} 탭 없음`);
-    await simulateClick(dirTab);
-    await sleep(300);
+    const dirLabelEn = dirSuffix === 'PORTRAIT' ? 'Portrait mode' : 'Landscape mode';
+    const dirLabelKo = dirSuffix === 'PORTRAIT' ? '세로 모드' : '가로 모드';
+    const dirLabelZh = dirSuffix === 'PORTRAIT' ? '纵向模式' : '横向模式';
+    const dirLabelZhShort = dirSuffix === 'PORTRAIT' ? '纵向' : '横向';
+    const dirTab = findVisibleChoiceByExactText(videoAspectRatio) ??
+      document.querySelector(`[aria-controls$="-content-${dirSuffix}"][role="tab"]`) ??
+      document.querySelector(`[aria-label="${dirLabelEn}"][role="tab"]`) ??
+      document.querySelector(`[aria-label="${dirLabelKo}"][role="tab"]`) ??
+      document.querySelector(`[aria-label="${dirLabelZh}"][role="tab"]`) ??
+      document.querySelector(`[aria-label="${dirLabelZhShort}"][role="tab"]`) ??
+      document.querySelector(`button[id*="trigger-${dirSuffix}"]`) ??
+      [...document.querySelectorAll('[role="tab"], button')].find(el => {
+        const label = (el.getAttribute('aria-label') || el.textContent || '').trim();
+        return dirSuffix === 'PORTRAIT' ? /portrait|세로|纵向|竖向/i.test(label) : /landscape|가로|横向/i.test(label);
+      });
+    if (!dirTab) {
+      log('VIDEO', `⚠️ 未显式找到 ${videoAspectRatio} 标签页，沿用当前画幅`);
+    } else {
+      await simulateClick(dirTab);
+      await sleep(300);
+    }
     const userOC = Math.max(1, Math.min(4, Number(s.outputCount) || 1));
     const outputTab = findVisibleChoiceByExactText(`x${userOC}`) ?? document.querySelector(`[aria-controls$="-content-${userOC}"][role="tab"]`) ?? document.querySelector(`[aria-label="x${userOC}"][role="tab"]`) ?? document.querySelector(`button[id*="trigger-${userOC}"]`);
     if (!outputTab) throw new Error(`[VIDEO] x${userOC} 탭 없음`);
@@ -1611,7 +1652,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
               //   팩토리 video phase 는 Gemini scriptText 기반 파일명 유지 → originalFilename 미전달
               originalFilename: settings?.isFactoryVideoPhase ? '' : (payload.originalFilename || '')
             })
-          : `${String(i + 1).padStart(3, '0')}_${(promptText || 'video').replace(/[^a-zA-Z0-9가-힣\s]/g, '').trim().substring(0, 20).replace(/\s+/g, '_')}.mp4`;
+          : `${String(i + 1).padStart(3, '0')}_${(promptText || 'video').replace(/[^a-zA-Z0-9\u4e00-\u9fa5\u3040-\u30ff가-힣\s]/g, '').trim().substring(0, 20).replace(/\s+/g, '_')}.mp4`;
         const filename = `${projectName}/${baseName}`;
         // ★ 업스케일 비활성화 — 모든 모드에서 SD 직접 다운로드
         //   사유: Google Flow SD 화질 충분, 업스케일 단계 시간·오류 리스크 제거
@@ -2381,23 +2422,33 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
   /** fetch → base64 (씬 이미지 등 공용, 캐릭터레퍼런스는 imgToBase64 사용) */
   async function fetchAsBase64(url) {
     if (!url) return null;
+    if (url.startsWith('data:image/')) return url;
     try {
       const response = await fetch(url, { credentials: 'include', cache: 'no-store' });
-      if (!response.ok) {
-        console.log('[CHAR_REF] fetch 실패', { status: response.status, urlTail: url?.slice(-50) });
-        return null;
+      if (response.ok) {
+        const blob = await response.blob();
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+        });
       }
-      const blob = await response.blob();
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => resolve(null);
-        reader.readAsDataURL(blob);
+    } catch (_) {}
+
+    // ★ Background proxy fallback (绕过跨域/CORS 限制)
+    try {
+      const bgRes = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ type: 'FETCH_IMAGE_BASE64', url }, (res) => {
+          if (chrome.runtime.lastError || !res?.ok) resolve(null);
+          else resolve(res.base64);
+        });
       });
+      if (bgRes) return bgRes;
     } catch (e) {
-      console.log('[CHAR_REF] fetchAsBase64', { msg: e?.message, urlTail: url?.slice(-50) });
-      return null;
+      console.log('[FLOW] fetchAsBase64 bg fallback failed', { msg: e?.message, urlTail: url?.slice(-50) });
     }
+    return null;
   }
 
   async function sendCharRefImagesToSidepanel(imageItems, opts = {}) {
@@ -4110,35 +4161,53 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
         await sleep(800);
 
         const videoTab = findModeButton('Video');
-        if (!videoTab) throw new Error('[视频] 未找到视频(VIDEO)标签页');
-        log('VIDEO', 'VIDEO 탭 선택');
-        await simulateClick(videoTab);
-        await sleep(300);
+        if (videoTab) {
+          log('VIDEO', 'VIDEO 탭 선택');
+          await simulateClick(videoTab);
+          await sleep(300);
+        } else {
+          log('VIDEO', '⚠️ 未显式找到视频标签页，检测是否已在视频模式并继续');
+        }
 
         const assetTab = (
           document.querySelector('[aria-controls$="-content-VIDEO_REFERENCES"][role="tab"]') ??
           document.querySelector('[aria-label="Assets"][role="tab"]') ??
           document.querySelector('[aria-label="애셋"][role="tab"]') ??
-          document.querySelector('[aria-controls*="VIDEO_REFERENCES"]')
+          document.querySelector('[aria-label="素材"][role="tab"]') ??
+          document.querySelector('[aria-label="资产"][role="tab"]') ??
+          document.querySelector('[aria-controls*="VIDEO_REFERENCES"]') ??
+          [...document.querySelectorAll('[role="tab"]')].find(el => /assets|素材|资产|애셋/i.test(el.textContent || el.getAttribute('aria-label') || ''))
         );
         if (assetTab) {
           await simulateClick(assetTab);
           await sleep(300);
-          log('VIDEO', '에셋 탭 선택');
+          log('VIDEO', '素材/Assets 标签页选择');
         }
 
         const dirSuffix = s.direction === 'portrait' ? 'PORTRAIT' : 'LANDSCAPE';
         const dirLabelEn = dirSuffix === 'PORTRAIT' ? 'Portrait mode' : 'Landscape mode';
         const dirLabelKo = dirSuffix === 'PORTRAIT' ? '세로 모드' : '가로 모드';
+        const dirLabelZh = dirSuffix === 'PORTRAIT' ? '纵向模式' : '横向模式';
+        const dirLabelZhShort = dirSuffix === 'PORTRAIT' ? '纵向' : '横向';
         const videoAspectRatio = s.aspectRatio || (dirSuffix === 'PORTRAIT' ? '9:16' : '16:9');
         const dirTab = findVisibleChoiceByExactText(videoAspectRatio) ??
           document.querySelector(`[aria-controls$="-content-${dirSuffix}"][role="tab"]`) ??
           document.querySelector(`[aria-label="${dirLabelEn}"][role="tab"]`) ??
           document.querySelector(`[aria-label="${dirLabelKo}"][role="tab"]`) ??
-          document.querySelector(`button[id*="trigger-${dirSuffix}"]`);
-        if (!dirTab) throw new Error(`[VIDEO] ${videoAspectRatio} 탭 없음`);
-        log('VIDEO', `${dirSuffix} 선택`);
-        await simulateClick(dirTab);
+          document.querySelector(`[aria-label="${dirLabelZh}"][role="tab"]`) ??
+          document.querySelector(`[aria-label="${dirLabelZhShort}"][role="tab"]`) ??
+          document.querySelector(`button[id*="trigger-${dirSuffix}"]`) ??
+          [...document.querySelectorAll('[role="tab"], button')].find(el => {
+            const label = (el.getAttribute('aria-label') || el.textContent || '').trim();
+            return dirSuffix === 'PORTRAIT' ? /portrait|세로|纵向|竖向/i.test(label) : /landscape|가로|横向/i.test(label);
+          });
+        if (!dirTab) {
+          log('VIDEO', `⚠️ 未显式找到 ${videoAspectRatio} 标签页，沿用当前画幅设置`);
+        } else {
+          log('VIDEO', `${dirSuffix} 选择`);
+          await simulateClick(dirTab);
+          await sleep(300);
+        }
         await sleep(300);
 
         const _payloadOC = (payloads || [])[0]?.outputCount;
@@ -4241,10 +4310,18 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
         await sleep(800);
 
         const modeTab = findModeButton('Image');
-        if (!modeTab) throw new Error('未找到图片(IMAGE)标签页');
-        log('STEP 8', 'IMAGE 탭 선택');
-        await simulateClick(modeTab);
-        await sleep(300);
+        if (modeTab) {
+          log('STEP 8', 'IMAGE 탭 선택');
+          await simulateClick(modeTab);
+          await sleep(300);
+        } else {
+          const currentText = modelSettingsBtn?.textContent || document.body?.innerText || '';
+          if (/Banana|Imagen|图像|图片|image|x2|x1/i.test(currentText)) {
+            log('STEP 8', '✅ 当前已处于图片模式或菜单结构已简化，继续执行');
+          } else {
+            log('STEP 8', '⚠️ 未显式找到图片标签页，继续执行后续步骤');
+          }
+        }
 
         const aspectSelected = await selectAspectRatio(s);
         if (!aspectSelected) {
@@ -4252,16 +4329,28 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
           const dirSuffix = portraitRatios.has(s.aspectRatio) || s.direction === 'portrait' ? 'PORTRAIT' : 'LANDSCAPE';
           const dirLabelEn = dirSuffix === 'PORTRAIT' ? 'Portrait mode' : 'Landscape mode';
           const dirLabelKo = dirSuffix === 'PORTRAIT' ? '세로 모드' : '가로 모드';
+          const dirLabelZh = dirSuffix === 'PORTRAIT' ? '纵向模式' : '横向模式';
+          const dirLabelZhShort = dirSuffix === 'PORTRAIT' ? '纵向' : '横向';
           const dirTab = (
+            findVisibleChoiceByExactText(s.aspectRatio) ??
             document.querySelector(`[aria-controls$="-content-${dirSuffix}"][role="tab"]`) ??
             document.querySelector(`[aria-label="${dirLabelEn}"][role="tab"]`) ??
             document.querySelector(`[aria-label="${dirLabelKo}"][role="tab"]`) ??
-            document.querySelector(`button[id*="trigger-${dirSuffix}"]`)
+            document.querySelector(`[aria-label="${dirLabelZh}"][role="tab"]`) ??
+            document.querySelector(`[aria-label="${dirLabelZhShort}"][role="tab"]`) ??
+            document.querySelector(`button[id*="trigger-${dirSuffix}"]`) ??
+            [...document.querySelectorAll('[role="tab"], button')].find(el => {
+              const label = (el.getAttribute('aria-label') || el.textContent || '').trim();
+              return dirSuffix === 'PORTRAIT' ? /portrait|세로|纵向|竖向/i.test(label) : /landscape|가로|横向/i.test(label);
+            })
           );
-          if (!dirTab) throw new Error(`${s.aspectRatio || dirSuffix} 탭 없음`);
-          log('STEP 9', '방향 선택');
-          await simulateClick(dirTab);
-          await sleep(300);
+          if (!dirTab) {
+            log('STEP 9', `⚠️ 未显式找到 ${s.aspectRatio || dirSuffix} 标签页，沿用当前画幅设置`);
+          } else {
+            log('STEP 9', '画幅方向选择');
+            await simulateClick(dirTab);
+            await sleep(300);
+          }
         }
 
         const _payloadOC = (payloads || [])[0]?.outputCount;
@@ -4282,7 +4371,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
         await simulateClick(modelDropdownBtn);
         await sleep(500);
 
-        const modelName = s.flowImageModel || s.model || 'Nano Banana 2';
+        const modelName = s.flowImageModel || s.model || 'Nano Banana 2.1';
         const modelBtn = findModelByName(modelName);
         if (!modelBtn) throw new Error('未找到指定模型: ' + modelName);
         await simulateClick(modelBtn);
@@ -4650,6 +4739,168 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
     }
   }
 
+// ★ Flow 原生角色库注册执行器 (同步角色到 Flow 左侧「角色」面板)
+async function registerCharacterToFlowNative(charInfo) {
+  if (!charInfo) throw new Error('缺少角色信息');
+  const targetName = (charInfo.name || charInfo.code || 'Character').trim();
+  const targetCode = (charInfo.code || '').trim();
+  log('SYNC_CHAR', `开始将角色 [${targetName}] 注册到 Flow 原生角色库...`);
+
+  // 1. 确保当前在 Flow 项目中
+  const currentUrl = window.location.href;
+  const match = currentUrl.match(/\/project\/([a-zA-Z0-9_-]+)/);
+  if (!match) {
+    throw new Error('当前不在 Flow 项目中，请先打开项目画板');
+  }
+  const projectId = match[1];
+
+  // 2. 检查当前是否在 /character 页面，若不在则点击左侧「角色」图标进入
+  if (!window.location.pathname.endsWith('/character')) {
+    const charNavBtn = document.querySelector('a[href*="/character"]') ||
+      [...document.querySelectorAll('button, div[role="button"]')].find(el => {
+        const txt = el.textContent || '';
+        const symbol = el.querySelector('.google-symbols')?.textContent?.trim() || '';
+        return txt.includes('角色') || symbol === 'accessibility_new';
+      });
+
+    if (charNavBtn) {
+      await simulateClick(charNavBtn);
+      await sleep(1200);
+    } else {
+      window.location.href = `https://flow.google.com/project/${projectId}/character`;
+      return { success: false, redirecting: true, message: '正在进入角色页面，请稍候重试' };
+    }
+  }
+
+  // 3. 等待 /character 页面加载，寻找「从项目中添加」按钮
+  let addFromProjectBtn = null;
+  const startWait = Date.now();
+  while (Date.now() - startWait < 8000) {
+    addFromProjectBtn = [...document.querySelectorAll('button')].find(b =>
+      b.textContent.includes('从项目中添加') || b.textContent.includes('Add from project')
+    ) || document.querySelector('flow-create-character-footer button:last-child');
+    if (addFromProjectBtn && isElementVisible(addFromProjectBtn)) break;
+    await sleep(300);
+  }
+
+  if (!addFromProjectBtn) {
+    throw new Error('未找到「从项目中添加」按钮，请确认处于角色创建页面');
+  }
+
+  await simulateClick(addFromProjectBtn);
+  await sleep(1000);
+
+  // 4. 等待项目资产选择弹窗加载
+  let assetOptions = [];
+  const modalWait = Date.now();
+  while (Date.now() - modalWait < 8000) {
+    assetOptions = [...document.querySelectorAll('[role="option"], div[class*="asset-item"], .asset-item')].filter(isElementVisible);
+    if (assetOptions.length > 0) break;
+    await sleep(300);
+  }
+
+  if (assetOptions.length === 0) {
+    throw new Error('未在项目中找到可用素材图片');
+  }
+
+  // 5. 匹配目标角色的参考图
+  const normName = targetName.toLowerCase();
+  const normCode = targetCode.toLowerCase();
+  let matchedOption = assetOptions.find(opt => {
+    const txt = (opt.textContent || '').toLowerCase();
+    return (normName && txt.includes(normName)) || (normCode && txt.includes(normCode));
+  });
+
+  if (!matchedOption) {
+    matchedOption = assetOptions.find(opt => {
+      const txt = (opt.textContent || '').toLowerCase();
+      return txt.includes('reference') || txt.includes('character');
+    });
+  }
+
+  if (!matchedOption) {
+    matchedOption = assetOptions[0];
+  }
+
+  log('SYNC_CHAR', '选中素材:', matchedOption.textContent?.trim());
+  await simulateClick(matchedOption);
+  await sleep(400);
+
+  // 点击「添加到提示」按钮
+  const addToPromptBtn = [...document.querySelectorAll('button')].find(b =>
+    b.textContent.includes('添加到提示') || b.textContent.includes('Add to prompt')
+  );
+  if (!addToPromptBtn) {
+    throw new Error('未找到「添加到提示」按钮');
+  }
+  await simulateClick(addToPromptBtn);
+  await sleep(1000);
+
+  // 6. 查找输入框并填入角色名称
+  const editor = document.querySelector('flow-character-prompt-input [contenteditable="true"], flow-create-character-footer [contenteditable="true"], .ProseMirror[contenteditable="true"], [contenteditable="true"][data-slate-editor="true"], textarea');
+  if (editor) {
+    editor.focus();
+    document.execCommand('selectAll', false, null);
+    document.execCommand('insertText', false, targetName);
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    await sleep(400);
+  }
+
+  // 7. 提交生成角色
+  const submitBtn = [...document.querySelectorAll('button')].find(b =>
+    b.textContent.includes('开始生成') ||
+    b.querySelector('.google-symbols')?.textContent?.trim() === 'arrow_forward'
+  );
+
+  if (submitBtn && !submitBtn.disabled) {
+    await simulateClick(submitBtn);
+  } else if (editor) {
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+  } else {
+    throw new Error('无法提交角色生成');
+  }
+
+  log('SYNC_CHAR', '角色生成已提交，等待 Flow 训练构建...');
+
+  // 8. 轮询等待生成完成（出现「完成修改」按钮）
+  const genWaitStart = Date.now();
+  const GEN_TIMEOUT_MS = 90000;
+  let completed = false;
+
+  while (Date.now() - genWaitStart < GEN_TIMEOUT_MS) {
+    const checkBtn = [...document.querySelectorAll('button')].find(b =>
+      b.textContent.includes('完成修改') ||
+      b.getAttribute('aria-label')?.includes('完成修改') ||
+      b.querySelector('.google-symbols')?.textContent?.trim() === 'check'
+    );
+
+    if (checkBtn && isElementVisible(checkBtn) && !checkBtn.disabled) {
+      log('SYNC_CHAR', '角色生成完成，点击「完成修改」保存...');
+      await simulateClick(checkBtn);
+      await sleep(1500);
+      completed = true;
+      break;
+    }
+
+    await sleep(1000);
+  }
+
+  if (!completed) {
+    const backBtn = document.querySelector('button[aria-label="返回"]') ||
+      [...document.querySelectorAll('button')].find(b =>
+        b.textContent.includes('返回') ||
+        b.querySelector('.google-symbols')?.textContent?.trim() === 'arrow_back'
+      );
+    if (backBtn) {
+      await simulateClick(backBtn);
+      await sleep(1000);
+    }
+  }
+
+  log('SYNC_CHAR', `角色 [${targetName}] 注册流程结束，已返回画板`);
+  return { success: true, characterName: targetName };
+}
+
 // ★ 청크 조립용 저장소 (START_GENERATION_CHUNK 대응)
 const chunkStore = {};
 
@@ -4672,6 +4923,58 @@ if (!window.__flowContentListenerRegistered) {
         state: controlState,
         url: window.location.href
       });
+      return true;
+    }
+
+    // ★ EXTRACT_FACTORY_TILES: 直接从当前 Flow 页面画板提取已生成的图片 Base64
+    if (message.type === 'EXTRACT_FACTORY_TILES') {
+      (async () => {
+        try {
+          const rawTiles = [...getTiles()];
+          const candidates = [];
+          const seen = new Set();
+
+          for (let domIndex = 0; domIndex < rawTiles.length; domIndex++) {
+            const dom = rawTiles[domIndex];
+            const img = dom.querySelector('img[src]');
+            const src = img?.src || '';
+            if (!src || src.includes('data:image/svg') || src.includes('placeholder')) continue;
+
+            const tileId = getTileId(dom) || `tile-${domIndex}`;
+            if (seen.has(tileId)) continue;
+            seen.add(tileId);
+
+            const rect = dom.getBoundingClientRect();
+            candidates.push({ dom, img, src, rect, domIndex, tileId });
+          }
+
+          // 按照画板视觉阅读顺序排列（从上到下，从左到右）
+          candidates.sort((a, b) => {
+            const rowDiff = Math.round(a.rect.top / 80) - Math.round(b.rect.top / 80);
+            if (rowDiff !== 0) return rowDiff;
+            return a.rect.left - b.rect.left;
+          });
+
+          const results = [];
+          for (let i = 0; i < candidates.length; i++) {
+            const item = candidates[i];
+            let b64 = imgToBase64(item.img);
+            if (!b64 && item.src) {
+              b64 = await fetchAsBase64(item.src);
+            }
+            if (b64 && b64.length > 100) {
+              results.push({
+                number: String(i + 1).padStart(2, '0'),
+                base64: b64,
+                domIndex: item.domIndex
+              });
+            }
+          }
+          sendResponse({ success: true, images: results });
+        } catch (err) {
+          sendResponse({ success: false, error: err?.message });
+        }
+      })();
       return true;
     }
 
@@ -4759,6 +5062,19 @@ if (!window.__flowContentListenerRegistered) {
       controlState = 'IDLE';
       window._charRefGenStopRequested = true;  // 내부 체크 플래그
       sendResponse({ success: true });
+      return true;
+    }
+
+    // ★ Flow 原生角色同步处理
+    if (message.type === 'SYNC_CHARACTER_TO_FLOW') {
+      (async () => {
+        try {
+          const res = await registerCharacterToFlowNative(message.character);
+          sendResponse(res);
+        } catch (err) {
+          sendResponse({ success: false, error: err?.message || String(err) });
+        }
+      })();
       return true;
     }
 
@@ -4978,7 +5294,7 @@ if (!window.__flowContentListenerRegistered) {
           }
           const baseName = typeof window.generateFilename === 'function'
             ? window.generateFilename({ mode: settings?.mode || 'textToVideo', promptIndex: i, imageIndex: 0, scriptText: payloadMin.scriptText || '', promptText, characterCode: payloadMin.characters || '', sceneNumber: payloadMin.number || '', originalFilename: settings?.isFactoryVideoPhase ? '' : (payloadMin.originalFilename || '') })
-            : `${String(i + 1).padStart(3, '0')}_${(promptText || 'video').replace(/[^a-zA-Z0-9가-힣\s]/g, '').trim().substring(0, 20).replace(/\s+/g, '_')}.mp4`;
+            : `${String(i + 1).padStart(3, '0')}_${(promptText || 'video').replace(/[^a-zA-Z0-9\u4e00-\u9fa5\u3040-\u30ff가-힣\s]/g, '').trim().substring(0, 20).replace(/\s+/g, '_')}.mp4`;
           const filename = `${projectName}/${baseName}`;
           // ★ 업스케일 비활성화 — 모든 모드 SD 직접 (재개 경로도 동일)
           try {

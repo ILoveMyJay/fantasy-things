@@ -107,6 +107,13 @@ function _stripMetaContent(script) {
  * - === 또는 --- 구분선 (stripMetaContent에서 이미 처리하지만 이중 방어)
  * - "um um um" 등 의미없는 보컬 필러
  */
+function _resolveNationalityTokens(nationality) {
+    const isUniv = !nationality || ['Universal', 'universal', 'None', 'none', 'all', 'All'].includes(nationality);
+    const natContextTag = isUniv ? '' : `[${nationality} Context] `;
+    const natCharToken = isUniv ? '' : `${nationality} `;
+    return { isUniv, natContextTag, natCharToken };
+}
+
 function _stripNonNarrativeLines(script) {
     if (!script || typeof script !== 'string') return script;
     return script.split('\n').filter(line => {
@@ -114,11 +121,11 @@ function _stripNonNarrativeLines(script) {
         if (!trimmed) return true; // 빈 줄 유지 (문단 구분용)
         if (/^\[.*\]$/.test(trimmed)) return false; // [Intro], [Verse 1] 등
         if (/^\(.*\)$/.test(trimmed)) return false; // (instrumental...) 등
-        if (/^#{1,4}\s+\d*\s*단계/.test(trimmed)) return false; // ## 5단계: 절망적 상황 (4분)
+        if (/^#{1,4}\s+\d*\s*(?:단계|阶段|幕|场|Stage|Phase)/.test(trimmed)) return false; // ## 5단계: 절망적 상황 / ## 第1阶段 / Scene
         if (/^#{1,4}\s+.{0,30}$/.test(trimmed)) return false; // ## 제목, ### 소제목 (짧은 헤딩만)
         if (/^={3,}$/.test(trimmed)) return false; // ======= 구분선
         if (/^-{3,}$/.test(trimmed)) return false; // ------- 구분선
-        if (/^\d+부\s*(완료|시작)?$/.test(trimmed)) return false; // 1부완료, 2부 시작
+        if (/^(?:\d+부|第\s*[\d一二三四五六七八九十]+\s*(?:部|幕|场|集))\s*(?:완료|시작|完|结束|开始)?$/i.test(trimmed)) return false; // 1부완료, 2부 시작, 第1幕完
         if (/^(um\s*)+$/i.test(trimmed)) return false; // um um um
         if (/^(la\s*)+$/i.test(trimmed)) return false; // la la la
         if (/^(na\s*)+$/i.test(trimmed)) return false; // na na na
@@ -126,7 +133,7 @@ function _stripNonNarrativeLines(script) {
     }).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-async function generatePromptsFromScript(script, numPrompts, apiKey, styleId = '', customStyle = '', nationality = 'Korean', userDirections = '', onBatchProgress = null, userProvidedCharRefs = null, splitMode = 'giseungjeongyeol', musicOptions = null) {
+async function generatePromptsFromScript(script, numPrompts, apiKey, styleId = '', customStyle = '', nationality = 'Universal', userDirections = '', onBatchProgress = null, userProvidedCharRefs = null, splitMode = 'giseungjeongyeol', musicOptions = null) {
     script = _stripNonNarrativeLines(_stripMetaContent(script));
 
     // ★ v1.6 CCR 스타일 절대 우선권 — CCR 유저 스타일 제공 시 설정 스타일 전부 무시
@@ -356,7 +363,7 @@ function _findSafeSplitPoint(text, target, minStart = 0) {
 function _distributeSegmentSecondLevel(segmentText, numPrompts) {
     if (!segmentText || numPrompts <= 0) return { type: 'even', parts: [{ text: segmentText || '', numPrompts: 1 }] };
 
-    const markerPattern = /(?:^|\n)\s*(##\s*\d+\s*단계[^\n]*|###\s+[^\n]+|---\s*\n|SECTION\s*\d+[^\n]*|SCENE\s*\d+[^\n]*|\[\d+\]\s*(?:\n|$))/gim;
+    const markerPattern = /(?:^|\n)\s*(##\s*\d+\s*(?:단계|阶段|幕|场|Stage|Phase)[^\n]*|###\s+[^\n]+|---\s*\n|SECTION\s*\d+[^\n]*|SCENE\s*\d+[^\n]*|第\s*[\d一二三四五六七八九十]+\s*(?:幕|场|阶段|集)[^\n]*|\[\d+\]\s*(?:\n|$))/gim;
     const matches = [...segmentText.matchAll(markerPattern)];
     const indices = [...new Set([0, ...matches.map(m => m.index).filter(i => i > 0), segmentText.length])].sort((a, b) => a - b);
 
@@ -1349,7 +1356,8 @@ Decide the OPTIMAL number of scenes based on the above.`;
 }
 
 /** Phase 0: splitMode에 따라 Gemini에 대본 분할 요청 → { characters, scenes } 반환 */
-async function _callSceneDivisionBySplitMode(script, splitMode, apiKey, nationality = 'Korean', userDirections = '', userProvidedCharRefs = null) {
+async function _callSceneDivisionBySplitMode(script, splitMode, apiKey, nationality = 'Universal', userDirections = '', userProvidedCharRefs = null) {
+    const { isUniv, natCharToken } = _resolveNationalityTokens(nationality);
     const safeScript = script.replace(/\\/g, '').replace(/"/g, "'").replace(/\t/g, ' ');
     const criteriaBlock = _getSplitCriteriaPrompt(splitMode);
 
@@ -1378,17 +1386,17 @@ ${criteriaBlock}
 ${userDirBlock}
 === OUTPUT FORMAT ===
 Return ONLY JSON. No markdown. COMPACT format — minimal whitespace.
-{"characters":[{"code":"MCR","name":"이름","description":"${nationality} {gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}"}],"scenes":[[1,"MCR","첫문장앞부분"],[2,"","배경설명"],[3,"SC1","키워드"]]}
+{"characters":[{"code":"MCR","name":"Name","description":"${natCharToken}{gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}"}],"scenes":[[1,"MCR","scriptFirstSentence"],[2,"","backgroundDesc"],[3,"SC1","keyword"]]}
 
 scenes = array of arrays: [sceneNumber, characters, scriptStart]
 - scriptStart: Copy the FIRST sentence of that scene's script VERBATIM. Remove ALL spaces and punctuation. Do NOT summarize. MAX 14 chars.
-  Example: "워따여러분이것좀보" (from "워따 여러분 이것 좀 보시오")
-- characters: "MCR", "MCR,SC1", "SC1,SC2" 등, or "" (empty for background/props-only scenes). Max 6 codes total: MCR + SC1~SC5.
+  Example: "林风推开咖啡馆的大门" / "Theoldmanwalked" / "워따여러분이것좀보"
+- characters: "MCR", "MCR,SC1", "SC1,SC2" 等, or "" (empty for background/props-only scenes). Max 6 codes total: MCR + SC1~SC5.
 - MCR is the MAIN CHARACTER. Recurring characters get codes. One-off objects/scenery use "".
 
 === MCR FLEXIBILITY (NEW) ===
 MCR does NOT have to be a human person. Depending on the script, MCR can be:
-  - Human (person): "Korean female, 25yo, ..."
+  - Human (person): "${natCharToken}female, 25yo, ..."
   - Animal: "golden retriever", "white Jindo puppy"
   - Plant/Flower: "thousand-year flower", "cherry blossom tree"
   - Object: "vintage grand piano", "antique pocket watch"
@@ -1577,11 +1585,12 @@ function _buildCharacterRefsFromDivisionResult(divisionResult, styleId, stylePro
 
         // 레퍼런스 시트 프롬프트: 4+2 split 레이아웃 (기존 정책)
         // ★ 비인물 MCR: 시트 레이아웃 문구도 "anatomy/body" 대신 "form/subject" 로 완화
+        const { natContextTag } = _resolveNationalityTokens(nationality);
         const refSheetPrompt = isStickFigure
-            ? `[${nationality} Context]. [no name labels]. ${effectiveStyle}. [${code}] Character reference sheet. 16:9 canvas split vertically. LEFT panel: 4 cells (2x2 grid) for face close-ups — front, 3/4 left, 3/4 right, profile. RIGHT panel: 2 cells (vertical split) — full body front, full body back. Same stick figure character, consistent lighting.`
+            ? `${natContextTag}[no name labels]. ${effectiveStyle}. [${code}] Character reference sheet. 16:9 canvas split vertically. LEFT panel: 4 cells (2x2 grid) for face close-ups — front, 3/4 left, 3/4 right, profile. RIGHT panel: 2 cells (vertical split) — full body front, full body back. Same stick figure character, consistent lighting.`
             : isNonHuman
-                ? `[${nationality} Context]. [no name labels]. ${effectiveStyle}. [${code}] Reference sheet. Match style, rendering, texture, color across all panels. Mid-gray neutral background. 16:9 canvas. LEFT panel: 4 cells (2x2) — detail close-ups of the subject from different angles (front, 3/4, side, macro). RIGHT panel: 2 cells — full form from front/top view, full form from side/alternate view. Same subject in its natural form (no human body/clothing/hair). Consistent lighting. ${desc}`
-                : `[${nationality} Context]. [no name labels]. ${effectiveStyle}. [${code}] Character reference sheet. Match style, rendering, texture, color across all panels. Mid-gray neutral background. 16:9 canvas. LEFT panel: 4 cells (2x2) — face close-ups (front, 3/4 left, 3/4 right, profile). RIGHT panel: 2 cells — full body front, full body back. Same character, consistent lighting. ${desc}`;
+                ? `${natContextTag}[no name labels]. ${effectiveStyle}. [${code}] Reference sheet. Match style, rendering, texture, color across all panels. Mid-gray neutral background. 16:9 canvas. LEFT panel: 4 cells (2x2) — detail close-ups of the subject from different angles (front, 3/4, side, macro). RIGHT panel: 2 cells — full form from front/top view, full form from side/alternate view. Same subject in its natural form (no human body/clothing/hair). Consistent lighting. ${desc}`
+                : `${natContextTag}[no name labels]. ${effectiveStyle}. [${code}] Character reference sheet. Match style, rendering, texture, color across all panels. Mid-gray neutral background. 16:9 canvas. LEFT panel: 4 cells (2x2) — face close-ups (front, 3/4 left, 3/4 right, profile). RIGHT panel: 2 cells — full body front, full body back. Same character, consistent lighting. ${desc}`;
 
         return {
             code,
@@ -1996,7 +2005,8 @@ async function _resumeSplitMode(resumeState, existingPrompts, apiKey, onBatchPro
 // Phase 1: 씬 분할 — 대본을 N개 씬으로 분할 + 캐릭터 식별
 // 가벼운 응답(번호, 대사, 캐릭터)만 받아 토큰 한도 내 안전
 // ═══════════════════════════════════════════
-async function _callSceneDivision(script, numScenes, apiKey, stylePrompt, nationality, styleId, userDirections, userProvidedCharRefs = null) {
+async function _callSceneDivision(script, numScenes, apiKey, stylePrompt, nationality = 'Universal', styleId, userDirections, userProvidedCharRefs = null) {
+    const { isUniv, natCharToken } = _resolveNationalityTokens(nationality);
     const safeScript = script.replace(/\\/g, '').replace(/"/g, "'").replace(/\t/g, ' ');
     const scriptEndHint = safeScript.length > 300 ? `\n\n=== SCRIPT ENDING (Scene [${numScenes}] must cover this part) ===\n...${safeScript.slice(-400)}` : '';
 
@@ -2017,12 +2027,12 @@ ${fixedRefsText}
 `;
     }
 
-    const scriptStartRule = `- scriptStart: Copy the FIRST sentence of that scene's script VERBATIM. Remove ALL spaces and punctuation. Do NOT summarize, do NOT extract keywords. MAX 14 chars.\n  Example: script "오빠가 교육 동의서를 가져오며" → "오빠가교육동의서를가져오며"\n  Example: script "The old man walked slowly" → "Theoldmanwalked"\n  Example: script "彼女は静かに歩いていた" → "彼女は静かに歩いていた"`;
+    const scriptStartRule = `- scriptStart: Copy the FIRST sentence of that scene's script VERBATIM. Remove ALL spaces and punctuation. Do NOT summarize, do NOT extract keywords. MAX 14 chars.\n  Example: script "林风推开咖啡馆的大门" → "林风推开咖啡馆的大门"\n  Example: script "The old man walked slowly" → "Theoldmanwalked"\n  Example: script "오빠가 교육 동의서를 가져오며" → "오빠가교육동의서를가져오며"`;
     const prompt = `${preProvidedBlock}Divide this script into exactly ${numScenes} scenes.
 
 === OUTPUT FORMAT ===
 Return ONLY JSON. No markdown. COMPACT format — minimal whitespace.
-{"characters":[{"code":"MCR","name":"이름","description":"${nationality} {gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}"}],"scenes":[[1,"MCR","키워드"],[2,"","키워드"],[3,"SC1","키워드"]]}
+{"characters":[{"code":"MCR","name":"Name","description":"${natCharToken}{gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}"}],"scenes":[[1,"MCR","keyword"],[2,"","keyword"],[3,"SC1","keyword"]]}
 
 scenes = array of arrays: [sceneNumber, characters, scriptStart]
 ${scriptStartRule}
@@ -2459,7 +2469,8 @@ function _finalizeRefSheetPrompt(refSheetPrompt, appearanceHints = {}) {
 // Batch 1: characterRefs + scenePrompts 출력
 // Batch 2-4: 이전 배치 5개 프롬프트 + 요약 참조 (continuationBlock)
 // ═══════════════════════════════════════════
-async function _callSegmentPromptGeneration(script, segments, characterRefs, apiKey, stylePrompt, nationality, styleId, userDirections, isFirstBatch, previousBatchPrompts = null, previousBatchSummary = null, userProvidedCharRefs = null, customStyle = '') {
+async function _callSegmentPromptGeneration(script, segments, characterRefs, apiKey, stylePrompt, nationality = 'Universal', styleId, userDirections, isFirstBatch, previousBatchPrompts = null, previousBatchSummary = null, userProvidedCharRefs = null, customStyle = '') {
+    const { isUniv, natContextTag, natCharToken } = _resolveNationalityTokens(nationality);
     const segmentList = Array.isArray(segments) ? segments : [segments];
     const totalNumPrompts = segmentList.reduce((a, s) => a + s.numPrompts, 0);
 
@@ -2468,7 +2479,7 @@ async function _callSegmentPromptGeneration(script, segments, characterRefs, api
     const isStickFigure = isStickMan || isStickWoman;
     const charPropsTemplate = isStickFigure
         ? `{CharCode} is a 2D stick figure ${isStickWoman ? 'woman' : 'man'} (simple white round head, thin black line body${isStickWoman ? ', pastel accessories like ribbon/bow' : ''}) in humorous 2D illustration style, wearing {color} ${isStickWoman ? 'pastel ' : ''}outfit.`
-        : `{CharCode}(${nationality} {gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}).`;
+        : `{CharCode}(${natCharToken}{gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}).`;
 
     // ★ v1.5: 2-레이어 스타일 해석
     const styleLayers = getStyleLayers(styleId, customStyle);
@@ -2588,7 +2599,7 @@ SCRIPT CONTEXT & HISTORICAL ACCURACY:
     const joseonRules = isJoseon ? `
 JOSEON-SPECIFIC: sceneDesc: Do NOT put outfit/costume in sceneDesc. Only [Context], shot, angle, [no text...], style, time, place, light.` : '';
 
-    const sceneDescFormat = `[${nationality} Context] {Shot}, {Angle}. [no name labels]. {environment/rendering tokens from STYLE — exclude ANY human-identity tokens like clothing/hair/accessories}. {time}. {place}. {light}.`;
+    const sceneDescFormat = `${natContextTag}{Shot}, {Angle}. [no name labels]. {environment/rendering tokens from STYLE — exclude ANY human-identity tokens like clothing/hair/accessories}. {time}. {place}. {light}.`;
     const actionFormat = `{action}. {expression}. {mood}.`;
 
     // ★ 환경 필드 강제 — Gemini가 뒤쪽 씬으로 갈수록 {place}/{light}를 빼먹는 경향 방지
@@ -2605,7 +2616,7 @@ sceneDesc의 {time}, {place}, {light} 3개 필드는 매 씬마다 구체적으�
   ❌ "Day", "Night"
 
 {place}: 구체적 장소 + 2~3개 환경 요소 (시각 앵커) 포함.
-  ✅ "Bustling Hongdae pedestrian street with neon signs and passing crowds"
+  ✅ "Bustling modern pedestrian street with neon signs and passing crowds"
   ✅ "Cramped trendy bakery interior lined with display cases and queue outside"
   ✅ "Cozy minimalist cafe with wooden tables and hanging plants"
   ❌ "Street", "Cafe", "Shop" (단어 하나만)
@@ -2629,12 +2640,12 @@ sceneDesc의 {time}, {place}, {light} 3개 필드는 매 씬마다 구체적으�
 
     // charRefPrefix: 인물 캐릭터 레퍼런스 시트용 — fullPrompt 사용 (rendering + humanIdentity 모두)
     //   비인물 캐릭터의 개별 레퍼런스는 _buildCharacterRefsFromDivisionResult에서 rendering만 사용
-    const charRefPrefix = `[${nationality} Context]. [no name labels]. ${styleLayers.fullPrompt}. `;
+    const charRefPrefix = `${natContextTag}[no name labels]. ${styleLayers.fullPrompt}. `;
     const charRefStyleEnv = `Match image style, rendering, texture, color and aesthetic across all panels. Clean mid-gray neutral solid background. 16:9 aspect ratio. `;
     // refSheetPrompt: 16:9 split. LEFT = face 2x2, RIGHT = full body vertical 2. Consistency: same person, uniform lighting.
     const charRefSheetTemplate = isStickFigure
         ? charRefPrefix + `[{CharCode}] Character reference sheet. ${charRefStyleEnv}16:9 canvas split vertically. LEFT panel: 4 equal cells (2x2 grid) for face close-ups — top-left: face front, camera-facing; top-right: face 3/4 view facing left; bottom-left: face 3/4 view facing right; bottom-right: face profile (side view). Uniform face size and even spacing. RIGHT panel: 2 equal cells (vertical split) — top: full body front, standing neutral pose; bottom: full body back, same pose. Maintain consistent anatomy, proportion, size and alignment. 2D stick figure {gender} (simple white round head, thin black line body{female_stick_detail}) in humorous 2D illustration style. {color} {outfit_modifier}outfit. Consistent lighting across all panels.`
-        : charRefPrefix + `[{CharCode}] Character reference sheet. ${charRefStyleEnv}16:9 canvas split vertically. LEFT panel: 4 equal cells (2x2 grid) for face close-ups — top-left: face front, camera-facing; top-right: face 3/4 view facing left; bottom-left: face 3/4 view facing right; bottom-right: face profile (side view). Uniform face size and even spacing. RIGHT panel: 2 equal cells (vertical split) — top: full body front, standing neutral pose; bottom: full body back, same pose. Maintain consistent anatomy, proportion, size and alignment. {nationality} {gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}. Same character in all panels (unified facial features, hair, skin tone, body build). Consistent lighting.`;
+        : charRefPrefix + `[{CharCode}] Character reference sheet. ${charRefStyleEnv}16:9 canvas split vertically. LEFT panel: 4 equal cells (2x2 grid) for face close-ups — top-left: face front, camera-facing; top-right: face 3/4 view facing left; bottom-left: face 3/4 view facing right; bottom-right: face profile (side view). Uniform face size and even spacing. RIGHT panel: 2 equal cells (vertical split) — top: full body front, standing neutral pose; bottom: full body back, same pose. Maintain consistent anatomy, proportion, size and alignment. ${natCharToken}{gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}. Same character in all panels (unified facial features, hair, skin tone, body build). Consistent lighting.`;
 
     const charRefPromptTemplate = isStickFigure
         ? charRefPrefix + `2D stick figure {gender} (simple white round head, thin black line body{female_stick_detail}) in humorous 2D illustration style. Full body shot, front facing, studio background. {CharCode} wearing {color} {outfit_modifier}outfit. Standing in neutral pose. Character reference portrait.`
@@ -2642,9 +2653,9 @@ sceneDesc의 {time}, {place}, {light} 3개 필드는 매 씬마다 구체적으�
 
     const charRefDescTemplate = isStickFigure
         ? `2D stick figure {gender}, simple white round head, thin black line body{female_stick_detail}, wearing {color} {outfit_modifier}outfit`
-        : `${nationality} {gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}`;
+        : `${natCharToken}{gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}`;
 
-    const exampleCharNameSeg = nationality === 'Korean' ? '이수아' : 'Jia';
+    const exampleCharNameSeg = nationality === 'Korean' ? '이수아' : (nationality === 'Chinese' ? '小雨' : 'Elena');
 
     if (isFirstBatch) {
         // ★ PRO 2.0: 사용자 제공 캐릭터가 있을 경우 PRE-PROVIDED 블록 삽입
@@ -2751,7 +2762,7 @@ ${sceneStyle}${humanIdentityBlockSeg}${nonHumanNoteSeg}
 === OUTPUT FORMAT ===
 Return ONLY a JSON object: { "characterRefs": [...], "scenePrompts": [...] }
 CRITICAL — Every characterRef MUST include prompt and refSheetPrompt. Every scenePrompt MUST include charActions (object). Do NOT omit.
-CHARACTER NAME LANGUAGE: When nationality is NOT Korean, characterRefs[].name MUST be in English only (e.g. Jia, Sarah). When nationality is Korean, name may be 한글. Never use 한글 for name when nationality is not Korean.
+CHARACTER NAME LANGUAGE: characterRefs[].name should match the script language: for Chinese scripts use Chinese characters (e.g. 小雨, 林风) or English; for Korean scripts use 한글 or English; for other scripts use English or appropriate native names.
 ═══ EXAMPLES — characterRefs (follow these patterns EXACTLY) ═══
 
 ⚠️ IMPORTANT — THE MAIN CHARACTER (MCR) IS NOT REQUIRED TO BE A HUMAN ⚠️
@@ -2826,13 +2837,13 @@ ${environmentRule}
 ═══ EXAMPLES — scenePrompts (follow these patterns EXACTLY) ═══
 
 EXAMPLE scenePrompt A — Two humans (charProps has FULL identity for BOTH):
-{ "number": "01", "characters": "MCR,SC1", "scriptText": "갑자기사레가들렸다", "sceneDesc": "[${nationality} Context] Full shot, Eye level. [no name labels]. Hyper-realistic cinematic photograph. ${nationality} drama aesthetic. Dawn. Narrow residential alley. Soft golden streetlight glow.", "charProps": "MCR(${nationality === 'Korean' ? 'Korean' : nationality} female, 25yo, slim, long straight black hair with side-swept bangs, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC1(${nationality === 'Korean' ? 'Korean' : nationality} male, 35yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses, silver chain bracelet).", "action": "MCR and SC1 walking through dawn alley. Surprised expression.", "charActions": { "MCR": "stops mid-step, hand on chest, startled wide-eyed expression.", "SC1": "turns head toward MCR, protective concerned frown." } }
+{ "number": "01", "characters": "MCR,SC1", "scriptText": "林风推开咖啡馆的大门", "sceneDesc": "${natContextTag}Full shot, Eye level. [no name labels]. Hyper-realistic cinematic photograph. ${natCharToken}aesthetic. Dawn. Narrow street. Soft golden streetlight glow.", "charProps": "MCR(${natCharToken}female, 25yo, slim, long straight black hair with side-swept bangs, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC1(${natCharToken}male, 35yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses, silver chain bracelet).", "action": "MCR and SC1 walking through dawn street. Surprised expression.", "charActions": { "MCR": "stops mid-step, hand on chest, startled wide-eyed expression.", "SC1": "turns head toward MCR, protective concerned frown." } }
 
 EXAMPLE scenePrompt B — Human + Animal together:
-{ "number": "05", "characters": "MCR,SC2", "scriptText": "공원에서산책하며", "sceneDesc": "[${nationality} Context] Full shot, Low angle. [no name labels]. Hyper-realistic cinematic photograph. Afternoon. City park with autumn leaves. Warm golden hour light.", "charProps": "MCR(${nationality === 'Korean' ? 'Korean' : nationality} female, 25yo, slim, long straight black hair with side-swept bangs, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC2(golden retriever, large, golden fur, floppy ears, brown eyes, red tartan bandana collar, bushy tail).", "action": "MCR walking with SC2 on leash through autumn park.", "charActions": { "MCR": "smiles gently, holding leash loosely, relaxed stride.", "SC2": "trots alongside happily, tail wagging, sniffing fallen leaves." } }
+{ "number": "05", "characters": "MCR,SC2", "scriptText": "小雨带着金毛在公园散步", "sceneDesc": "${natContextTag}Full shot, Low angle. [no name labels]. Hyper-realistic cinematic photograph. Afternoon. City park with autumn leaves. Warm golden hour light.", "charProps": "MCR(${natCharToken}female, 25yo, slim, long straight black hair with side-swept bangs, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC2(golden retriever, large, golden fur, floppy ears, brown eyes, red tartan bandana collar, bushy tail).", "action": "MCR walking with SC2 on leash through autumn park.", "charActions": { "MCR": "smiles gently, holding leash loosely, relaxed stride.", "SC2": "trots alongside happily, tail wagging, sniffing fallen leaves." } }
 
 EXAMPLE scenePrompt C — Background-only (no character, one-off scenery):
-{ "number": "08", "characters": "", "scriptText": "고요한새벽바다위로", "sceneDesc": "[${nationality} Context] Full shot, Bird's eye. [no name labels]. Hyper-realistic cinematic photograph. Pre-dawn. Calm ocean surface. Deep blue-violet sky with faint horizon glow.", "charProps": "Establishing shot of calm pre-dawn ocean. Deep blue-violet water stretching to horizon, faint orange glow at the edge, still and peaceful.", "action": "Vast ocean, quiet atmosphere. Serene, contemplative mood.", "charActions": {} }
+{ "number": "08", "characters": "", "scriptText": "海浪在晨曦中拍打着礁石", "sceneDesc": "${natContextTag}Full shot, Bird's eye. [no name labels]. Hyper-realistic cinematic photograph. Pre-dawn. Calm ocean surface. Deep blue-violet sky with faint horizon glow.", "charProps": "Establishing shot of calm pre-dawn ocean. Deep blue-violet water stretching to horizon, faint orange glow at the edge, still and peaceful.", "action": "Vast ocean, quiet atmosphere. Serene, contemplative mood.", "charActions": {} }
 
 === RULES ===
 1. Generate EXACTLY ${totalNumPrompts} prompts. Respect the section/part boundaries above. Each prompt = one scene/paragraph unit—place boundaries at LINE START or SENTENCE START (줄·문장의 시작). NEVER split mid-word or mid-sentence. Each scene MUST begin at the start of a new line or sentence.
@@ -2851,7 +2862,7 @@ EXAMPLE scenePrompt C — Background-only (no character, one-off scenery):
      * USE WHEN: script expresses doubt, shock, realization, fear, regret, longing, greed, suppressed anger, inner conflict, decision moment, secret thought, emotional climax, key concept reveal, punchline.
      * Format: characters="{Code}" for body/gesture (identity lock), OR characters="" for object/nature/symbol macros.
        charProps="{Code}(extreme macro close-up of {body part}, {micro-action showing emotion}, {full identity description})" OR charProps="Extreme macro close-up of {object detail}."
-     * Example A (body): characters="MCR", charProps="MCR(extreme macro close-up of single eye with glasses rim, pupil slightly dilated, faint tear welling at lower lid, ${nationality} female ...full identity...).", action="Pupil contracts slightly. Realization expression. Quiet emotional weight mood."
+     * Example A (body): characters="MCR", charProps="MCR(extreme macro close-up of single eye with glasses rim, pupil slightly dilated, faint tear welling at lower lid, ${natCharToken}female ...full identity...).", action="Pupil contracts slightly. Realization expression. Quiet emotional weight mood."
      * Example B (object): characters="", charProps="Extreme macro close-up of the '9,800' price tag text, ink fibers visible, slight paper grain.", action="Static focus on text detail. Financial shock mood."
      * Macro close-ups DO NOT count toward MCR screen-time cap above (they are interior/symbolic shots, not talking-head).
      * DO NOT repeat the same macro subject — vary categories (a)~(e).
@@ -2863,13 +2874,13 @@ EXAMPLE scenePrompt C — Background-only (no character, one-off scenery):
    - Body-part close-up: hands, feet, eyes—when script focuses on that action (gripping, writing, stepping, glancing).
    - Within every 10 scenes: at least THREE (30%) must be atmosphere-implying shots — big close-ups of body parts (eyes, hands, feet), objects, or scenery/establishing shots (characters:""). Do NOT use face close-up for all even-numbered scenes.
 4. CAMERA: Odd numbers [01,03,05...]=Full shot. Even numbers [02,04,06...]=Close-up OR Macro close-up. Shot distribution target: Full shot ~50%, Face close-up ~25%, MACRO close-up (psychological) ~25%. Macro close-ups replace roughly half of the even-numbered close-up slots at moments of emotional/psychological intensity. Vary when script calls for it. NO consecutive full shots. Angles: eye level, low angle, bird's eye, Dutch angle, high angle, macro (cycle).
-5. sceneDesc: MANDATORY format—start with [${nationality} Context], include [no name labels], FULL style description, time, place, light. Do NOT shorten style.
+5. sceneDesc: MANDATORY format—${natContextTag ? `start with ${natContextTag}, ` : ''}include [no name labels], FULL style description, time, place, light. Do NOT shorten style.
    ★ EXCEPTION — INTENTIONAL TEXT/TYPOGRAPHY SCENES:
      When the scene intentionally features readable text (numbers, years, currency, names,
      product names, chart labels, book covers, phone screens, price tags, documents),
      REPLACE [no name labels] with [text allowed: <specific text content>].
      Examples:
-       - Number:   [text allowed: '9,800원']
+       - Number:   [text allowed: '9,800']
        - Year:     [text allowed: '1899']
        - Currency: [text allowed: '$1,000,000']
        - Person:   [text allowed: 'Thorstein Veblen']
@@ -2879,19 +2890,19 @@ EXAMPLE scenePrompt C — Background-only (no character, one-off scenery):
      This ensures readable typography only where intentional, while keeping default
      scenes (character shots, ambient scenery) label-free.
 6. action: MANDATORY format—{action}. {expression}. {mood}.
-7. LANGUAGE (CRITICAL—AI image models require English): sceneDesc, charProps, action MUST be 100% English. NO Korean, no 한글. scriptText keeps original language. Translate time/place/atmosphere: 새벽→dawn, 주택가 골목→residential alley, 가로등 불빛→streetlight glow, 어둡고 을씨년스러운→dark dreary, 조용한→quiet, 밤→night.
+7. LANGUAGE (CRITICAL—AI image models require English): sceneDesc, charProps, action MUST be 100% English. Non-English narrative words must be translated into English for image prompts. scriptText keeps original language.
 8. FORMAT: Single space between words. NO blank lines inside sceneDesc, charProps, or action.
 9. charProps (CRITICAL — NO ABBREVIATION): When characters="" use "Establishing shot of {place}." or "Big close-up of {subject}." (no character in frame). Do NOT write "Empty" in charProps—it is internal; output only the shot description. When characters present: Format "${charPropsTemplate}". Body-part close-up: "MCR(extreme close-up of {hands/face/eyes/feet}, {action/expression})". EVERY PROMPT must repeat the FULL character description inside charProps. NEVER use "(...)" or abbreviate. AI image generators have NO memory of previous prompts, so each charProps must be SELF-CONTAINED and COMPLETE.
-   MANDATORY FIELDS for HUMAN characters in charProps: (1) gender + age, (2) body build (slim/average/heavyset/muscular), (3) hair: length + color + style (e.g. "long wavy black hair", "short cropped brown hair with side-swept bangs"), (4) outfit: color + pattern/texture + type (e.g. "dark navy striped blazer over white inner blouse and black pencil skirt"), (5) accessories: glasses (frame shape like "thin round metal-frame glasses") or "no glasses", plus any earrings/hat/bag/scarf/watch. Example: "MCR(Korean female, 25yo, slim, long straight black hair, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings)." NOT "MCR(Korean female, 25yo, long black hair, wearing white plain blouse)." NOT "MCR(...)." NOT "MCR(same as before)."
+   MANDATORY FIELDS for HUMAN characters in charProps: (1) gender + age, (2) body build (slim/average/heavyset/muscular), (3) hair: length + color + style (e.g. "long wavy black hair", "short cropped brown hair with side-swept bangs"), (4) outfit: color + pattern/texture + type (e.g. "dark navy striped blazer over white inner blouse and black pencil skirt"), (5) accessories: glasses (frame shape like "thin round metal-frame glasses") or "no glasses", plus any earrings/hat/bag/scarf/watch. Example: "MCR(${natCharToken}female, 25yo, slim, long straight black hair, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings)." NOT "MCR(${natCharToken}female, 25yo, long black hair, wearing white plain blouse)." NOT "MCR(...)." NOT "MCR(same as before)."
    NON-HUMAN characters: For animals use species, breed/type, color, size, features. For plants/objects use type, color, size, condition.
 10. charActions: Split action per character. characters="" → {}. Always object. English only. Do NOT invent new content.
 ${stickRules}
 ${scriptContextRules}
 ${joseonRules}
-11. refSheetPrompt and prompt: MUST start with [${nationality} Context]. [no name labels]. {FULL style}. then [{CharCode}]. Match style, rendering, texture, color across all panels. Mid-gray neutral solid background. 16:9. Layout: LEFT = 4 cells (2x2) face close-ups; RIGHT = 2 cells full body. Same character, consistent lighting. [{CharCode}] at front. Replace {CharCode} with [MCR]/[SC1]/[SC2]/[SC3]/[SC4]/[SC5] only — never SC6 or higher. CRITICAL — refSheetPrompt MUST end with the character's COMPLETE IDENTITY matching charProps exactly: gender, age, body build (slim/average/heavyset/muscular), hair (length + color + style), wearing {color} {pattern} {outfit}, accessories (glasses with frame shape, earrings, hat, bag, etc.). Do NOT write just "Korean female, 25yo" — ALWAYS include ALL identity tokens: build, full hair description, full outfit with color+pattern, and all accessories. The refSheetPrompt identity MUST be identical to charProps identity. For non-human characters: describe species/type, color, size, distinguishing features instead. For stick figures: {gender} per character; female=pastel accessories, pastel outfit.
+11. refSheetPrompt and prompt: ${natContextTag ? `MUST start with ${natContextTag}. ` : ''}[no name labels]. {FULL style}. then [{CharCode}]. Match style, rendering, texture, color across all panels. Mid-gray neutral solid background. 16:9. Layout: LEFT = 4 cells (2x2) face close-ups; RIGHT = 2 cells full body. Same character, consistent lighting. [{CharCode}] at front. Replace {CharCode} with [MCR]/[SC1]/[SC2]/[SC3]/[SC4]/[SC5] only — never SC6 or higher. CRITICAL — refSheetPrompt MUST end with the character's COMPLETE IDENTITY matching charProps exactly: gender, age, body build (slim/average/heavyset/muscular), hair (length + color + style), wearing {color} {pattern} {outfit}, accessories (glasses with frame shape, earrings, hat, bag, etc.). Do NOT write just "${natCharToken}female, 25yo" — ALWAYS include ALL identity tokens: build, full hair description, full outfit with color+pattern, and all accessories. The refSheetPrompt identity MUST be identical to charProps identity. For non-human characters: describe species/type, color, size, distinguishing features instead. For stick figures: {gender} per character; female=pastel accessories, pastel outfit.
 12. CHARACTER COUNT: Output exactly 1~6 characterRefs. Never 7 or more. Never use code SC6.
 13. SKIP: Do NOT generate prompts for: title cards (e.g. "A title card appears", "Title card for", N단계 markers like 9단계진실폭로), part/phase dividers (1부완료, 2부 등), production notes (Display...), structural markers, lines in [...] brackets (e.g. [Intro], [Verse 1], [Chorus], [Bridge], [Outro]), lines in (...) parentheses (e.g. (instrumental...), (fade out...)), vocal fillers (um um um, la la la), or any meta-text. You MUST distinguish actual narrative from non-narrative using your reasoning ability. Ask yourself: "Can this line be visualized as an image scene?" If NO (section headers, stage directions, instrument cues, timestamps, credits, structural dividers, meta-comments), SKIP it. Generate prompts ONLY for lines that describe visualizable content: character actions, dialogue, emotions, settings, or story moments.
-14. PROHIBITED: CRITICAL—More than 6 characterRefs; SC6, SC7, or any character code beyond SC5. Any Korean/한글. Word "Empty" in charProps. Arbitrary/meaningless body-part or prop close-ups (use only when script focuses on them). Same angle consecutively. Shortening or abbreviating charProps with "(...)" or "same as before".
+14. PROHIBITED: CRITICAL—More than 6 characterRefs; SC6, SC7, or any character code beyond SC5. Non-English text in sceneDesc/charProps/action. Word "Empty" in charProps. Arbitrary/meaningless body-part or prop close-ups (use only when script focuses on them). Same angle consecutively. Shortening or abbreviating charProps with "(...)" or "same as before".
 ${userDirections ? `\n=== ★ USER DIRECTIONS (HIGHEST PRIORITY — override all other rules if conflicting) ===\nThe user's special directions below MUST be reflected in EVERY generated prompt as the top priority.\n${userDirections}` : ''}
 
 === GENERATE characterRefs AND ${totalNumPrompts} SCENE PROMPTS AS JSON OBJECT ===`;
@@ -3022,7 +3033,7 @@ ${environmentRule}
      * USE WHEN: script expresses doubt, shock, realization, fear, regret, longing, greed, suppressed anger, inner conflict, decision moment, secret thought, emotional climax, key concept reveal, punchline.
      * Format: characters="{Code}" for body/gesture (identity lock), OR characters="" for object/nature/symbol macros.
        charProps="{Code}(extreme macro close-up of {body part}, {micro-action showing emotion}, {full identity description})" OR charProps="Extreme macro close-up of {object detail}."
-     * Example A (body): characters="MCR", charProps="MCR(extreme macro close-up of single eye with glasses rim, pupil slightly dilated, faint tear welling at lower lid, ${nationality} female ...full identity...).", action="Pupil contracts slightly. Realization expression. Quiet emotional weight mood."
+     * Example A (body): characters="MCR", charProps="MCR(extreme macro close-up of single eye with glasses rim, pupil slightly dilated, faint tear welling at lower lid, ${natCharToken}female ...full identity...).", action="Pupil contracts slightly. Realization expression. Quiet emotional weight mood."
      * Example B (object): characters="", charProps="Extreme macro close-up of the '9,800' price tag text, ink fibers visible, slight paper grain.", action="Static focus on text detail. Financial shock mood."
      * Macro close-ups DO NOT count toward MCR screen-time cap above (they are interior/symbolic shots, not talking-head).
      * DO NOT repeat the same macro subject — vary categories (a)~(e).
@@ -3034,17 +3045,17 @@ ${environmentRule}
    - Body-part close-up: hands, feet, eyes—when script focuses on that action (gripping, writing, stepping, glancing).
    - Within every 10 scenes: at least THREE (30%) must be atmosphere-implying shots — big close-ups of body parts (eyes, hands, feet), objects, or scenery/establishing shots (characters:""). Do NOT use face close-up for all even-numbered scenes.
 4. CAMERA: Odd numbers [01,03,05...]=Full shot. Even numbers [02,04,06...]=Close-up OR Macro close-up. Shot distribution target: Full shot ~50%, Face close-up ~25%, MACRO close-up (psychological) ~25%. Macro close-ups replace roughly half of the even-numbered close-up slots at moments of emotional/psychological intensity. Vary when script calls for it. NO consecutive full shots. Angles: eye level, low angle, bird's eye, Dutch angle, high angle, macro (cycle).
-5. sceneDesc: MANDATORY—start with [${nationality} Context], include [no name labels], FULL style, time, place, light. Do NOT shorten style.
+5. sceneDesc: MANDATORY—${natContextTag ? `start with ${natContextTag}, ` : ''}include [no name labels], FULL style, time, place, light. Do NOT shorten style.
    ★ EXCEPTION — INTENTIONAL TEXT/TYPOGRAPHY SCENES:
      When the scene intentionally features readable text (numbers, years, currency, names,
      product names, chart labels, documents), REPLACE [no name labels] with
      [text allowed: <specific text content>].
-     Examples: [text allowed: '9,800원'], [text allowed: '1899'],
+     Examples: [text allowed: '9,800'], [text allowed: '1899'],
                [text allowed: 'Thorstein Veblen'], [text allowed: 'Galaxy S25'],
                [text allowed: chart labels and numbers]
      Default scenes (character shots, scenery) keep [no name labels] as is.
 6. action: MANDATORY—{action}. {expression}. {mood}.
-7. LANGUAGE (CRITICAL—AI image models require English): sceneDesc, charProps, action MUST be 100% English. NO Korean, no 한글. scriptText keeps original language. Translate time/place/atmosphere: 새벽→dawn, 주택가 골목→residential alley, 가로등 불빛→streetlight glow, 어둡고 을씨년스러운→dark dreary, 조용한→quiet, 밤→night.
+7. LANGUAGE (CRITICAL—AI image models require English): sceneDesc, charProps, action MUST be 100% English. Non-English narrative words must be translated into English for image prompts. scriptText keeps original language.
 8. FORMAT: Single space between words. NO blank lines inside sceneDesc, charProps, or action.
 9. charProps (CRITICAL — NO ABBREVIATION): When characters="" use "Establishing shot of {place}." or "Big close-up of {subject}." (no character in frame). Do NOT write "Empty" in charProps—it is internal; output only the shot description. When characters present: Format "${charPropsTemplate}". Body-part close-up: "MCR(extreme close-up of {hands/face/eyes/feet}, {action/expression})". PATTERN and COLOR MANDATORY when characters present. EVERY PROMPT must repeat the FULL character description inside charProps — gender, age, hair, outfit with color and pattern. NEVER use "(...)" or abbreviate. AI image generators have NO memory of previous prompts, so each charProps must be SELF-CONTAINED and COMPLETE.
 10. charActions: Split action per character. characters="" → {}. Always object. English only.
@@ -3052,7 +3063,7 @@ ${stickRules}
 ${scriptContextRules}
 ${joseonRules}
 11. SKIP: Do NOT generate prompts for: title cards ("A title card appears", "Title card for", N단계 markers), part/phase dividers (1부완료, 2부 등), production notes (Display...), structural markers, lines in [...] brackets (e.g. [Intro], [Verse], [Chorus], [Bridge], [Outro]), lines in (...) parentheses (e.g. (instrumental...), (fade out...)), vocal fillers (um um um, la la la). Distinguish meta-text from real narrative. Generate ONLY for actual narrative/lyric lines (character action, dialogue, setting, emotion).
-12. PROHIBITED: CRITICAL—Any Korean/한글. Word "Empty" in charProps. Arbitrary/meaningless body-part or prop close-ups (use only when script focuses on them). Same angle consecutively. Shortening or abbreviating charProps with "(...)" or "same as before".
+12. PROHIBITED: CRITICAL—Non-English text in sceneDesc/charProps/action. Word "Empty" in charProps. Arbitrary/meaningless body-part or prop close-ups (use only when script focuses on them). Same angle consecutively. Shortening or abbreviating charProps with "(...)" or "same as before".
 ${userDirections ? `\n=== ★ USER DIRECTIONS (HIGHEST PRIORITY — override all other rules if conflicting) ===\nThe user's special directions below MUST be reflected in EVERY generated prompt as the top priority.\n${userDirections}` : ''}
 
 === GENERATE ${totalNumPrompts} IMAGE PROMPTS AS JSON ARRAY ===`;
@@ -3071,6 +3082,7 @@ async function _callBatchPromptGeneration(script, batchScenes, characterRefs, ap
     const isStickMan = styleId === '27';
     const isStickWoman = styleId === '28';
     const isStickFigure = isStickMan || isStickWoman;
+    const { isUniv, natContextTag, natCharToken } = _resolveNationalityTokens(nationality);
 
     // ★ v1.5: 2-레이어 스타일 해석 — 데이터 분리(코드) + 의미 분리(Gemini 자율) 이중 방어
     const styleLayers = getStyleLayers(styleId, customStyle);
@@ -3138,7 +3150,7 @@ into MCR charProps or sceneDesc.` : ''}`;
 
     const charPropsTemplate = isStickFigure
         ? `{CharCode} is a 2D stick figure ${isStickWoman ? 'woman' : 'man'} (simple white round head, thin black line body${isStickWoman ? ', pastel accessories like ribbon/bow' : ''}) in humorous 2D illustration style, wearing {color} ${isStickWoman ? 'pastel ' : ''}outfit.`
-        : `{CharCode}(${nationality} {gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}).`;
+        : `{CharCode}(${natCharToken}{gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}).`;
 
     // ★ PRO 2.0: 사용자 제공 refs는 description이 아닌 FULL prompt를 컨텍스트에 주입
     const charRefContext = characterRefs.map(r => {
@@ -3250,7 +3262,7 @@ Codes ${fixedCodesStr} are FIXED by the user. EVERY scene in this batch must fol
 
 ★ EXAMPLE (Gemini must follow this pattern exactly):
 
-  sceneDesc: "[Korean Context] Full shot, Eye level. [no name labels]. Rough hand-drawn
+  sceneDesc: "Full shot, Eye level. [no name labels]. Rough hand-drawn
   marker illustration style, thick wobbly black ink outlines, imperfect scratchy lines,
   flat bold colors with slight marker bleed, cream off-white paper background, casual
   doodle sketchbook aesthetic (Amy Slaton Instagram cartoonist vibe). Day. Hongdae
@@ -3311,7 +3323,7 @@ Return ONLY a JSON array. No other text, no markdown.
     "number": "01",
     "characters": "MCR",
     "scriptText": "copy from input AS-IS",
-    "sceneDesc": "[${nationality} Context] {Shot}, {Angle}. [no name labels]. {environment/rendering tokens from STYLE — exclude ANY clothing/hair/human-identity tokens even if they appear in STYLE text}. {time}. {place}. {light}.",
+    "sceneDesc": "${natContextTag}{Shot}, {Angle}. [no name labels]. {environment/rendering tokens from STYLE — exclude ANY clothing/hair/human-identity tokens even if they appear in STYLE text}. {time}. {place}. {light}.",
     "charProps": "${charPropsTemplate}",
     "action": "{action}. {expression}. {mood}.",
     "charActions": { "MCR": "MCR's action and expression" }
@@ -3320,7 +3332,7 @@ Return ONLY a JSON array. No other text, no markdown.
 charActions: split action per character; characters="" → {}
 
 ═══ EXAMPLES — charProps MUST repeat ALL identity tokens every time ═══
-HUMAN: "MCR(${nationality === 'Korean' ? 'Korean' : nationality} female, 25yo, slim, long straight black hair with side-swept bangs, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC1(${nationality === 'Korean' ? 'Korean' : nationality} male, 35yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses, silver chain bracelet)."
+HUMAN: "MCR(${natCharToken}female, 25yo, slim, long straight black hair with side-swept bangs, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC1(${natCharToken}male, 35yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses, silver chain bracelet)."
 ANIMAL: "MCR(golden retriever, large, golden fur, floppy ears, brown eyes, red tartan bandana collar, bushy tail)."
 BACKGROUND: "Establishing shot of calm pre-dawn ocean."
 ═══ NEVER abbreviate as "MCR(...)" or "same as before". ALL tokens: build, hair, outfit (color+pattern+type+inner), accessories/glasses. ═══
@@ -3346,27 +3358,27 @@ BACKGROUND: "Establishing shot of calm pre-dawn ocean."
      * USE WHEN: script expresses doubt, shock, realization, fear, regret, longing, greed, suppressed anger, inner conflict, decision moment, secret thought, emotional climax, key concept reveal, punchline.
      * Format: characters="{Code}" for body/gesture (identity lock), OR characters="" for object/nature/symbol macros.
        charProps="{Code}(extreme macro close-up of {body part}, {micro-action showing emotion}, {full identity description})" OR charProps="Extreme macro close-up of {object detail}."
-     * Example A (body): characters="MCR", charProps="MCR(extreme macro close-up of single eye with glasses rim, pupil slightly dilated, faint tear welling at lower lid, ${nationality} female ...full identity...).", action="Pupil contracts slightly. Realization expression. Quiet emotional weight mood."
+     * Example A (body): characters="MCR", charProps="MCR(extreme macro close-up of single eye with glasses rim, pupil slightly dilated, faint tear welling at lower lid, ${natCharToken}female ...full identity...).", action="Pupil contracts slightly. Realization expression. Quiet emotional weight mood."
      * Example B (object): characters="", charProps="Extreme macro close-up of the '9,800' price tag text, ink fibers visible, slight paper grain.", action="Static focus on text detail. Financial shock mood."
      * DO NOT repeat the same macro subject — vary categories (a)~(e).
    - Use MCR only when the scene focuses on the main character. For tension/atmosphere, lean on background, props, and detail shots.
-4. LANGUAGE (CRITICAL): sceneDesc, charProps, action MUST be 100% English. NO Korean, no 한글. scriptText keeps original. Translate: 새벽→dawn, 주택가 골목→residential alley, 가로등 불빛→streetlight glow, 어둡고 을씨년스러운→dark dreary, 분위기→atmosphere
+4. LANGUAGE (CRITICAL): sceneDesc, charProps, action MUST be 100% English. Non-English narrative words must be translated into English for image prompts. scriptText keeps original.
 5. CAMERA (CRITICAL — no consecutive full shots):
    - ALTERNATE: Full shot → Close-up → Full shot → Close-up. Full shot and Full shot must NEVER be consecutive (causes jarring cut).
    - Shot distribution TARGET: Full shot ~45%, Face/Character Close-up ~30%, MACRO Close-up (psychological/symbolic) ~25%.
    - Macro close-ups fit especially into even-numbered slots at emotional/psychological intensity moments. Plain "Close-up" alone is NOT enough.
    - Within every 10 scenes: at least TWO (20%) must be MACRO close-ups (categories a~e above) — not just regular Big close-ups.
    - Angles: eye level→low→bird's eye→Dutch→high→macro (cycle)
-6. sceneDesc: Start with [${nationality} Context], shot, angle, [no text...], FULL style description (use complete style prompt — DO NOT shorten), time/place/light. For Joseon styles do NOT duplicate outfit/costume in sceneDesc — those go in charProps only.
+6. sceneDesc: ${natContextTag ? `Start with ${natContextTag}, ` : 'Start with '}shot, angle, [no text...], FULL style description (use complete style prompt — DO NOT shorten), time/place/light. For Joseon styles do NOT duplicate outfit/costume in sceneDesc — those go in charProps only.
 7. charProps (CRITICAL — FULL IDENTITY EVERY TIME): When characters="" use "Establishing shot of {place}." or "Big close-up of {subject}." For body-part: "MCR(extreme close-up of {hands/face/eyes/feet}, {action/expression})".
-   When characters present: EVERY prompt MUST repeat ALL identity tokens in charProps — (1) gender+age, (2) body build, (3) hair: length+color+style, (4) outfit: color+pattern+type+inner layer, (5) ALL accessories: glasses with frame shape or "no glasses", earrings/hat/bag/etc. Format: "${charPropsTemplate}". NEVER abbreviate as "MCR(...)" or "same as before". plain/solid/무지 FORBIDDEN (except stick-figure styles where solid color is allowed).
+   When characters present: EVERY prompt MUST repeat ALL identity tokens in charProps — (1) gender+age, (2) body build, (3) hair: length+color+style, (4) outfit: color+pattern+type+inner layer, (5) ALL accessories: glasses with frame shape or "no glasses", earrings/hat/bag/etc. Format: "${charPropsTemplate}". NEVER abbreviate as "MCR(...)" or "same as before". plain/solid/monochrome outfits FORBIDDEN (except stick-figure styles where solid color is allowed).
    For NON-HUMAN coded characters: repeat full identity (species, color, size, features) in EVERY prompt. E.g. "MCR(golden retriever, large, golden fur, floppy ears, red bandana collar)."
 8. Keep character appearances CONSISTENT with characterRefs — charProps identity tokens MUST be IDENTICAL to characterRef description
 9. charActions: Split action per character. characters="" → {}. Always object. English only.
 ${stickRules}
 ${scriptContextRules}
 ${joseonRules}
-10. PROHIBITED: CRITICAL—Korean/한글 in sceneDesc/charProps/action. Word "Empty" in charProps. Color temperature. Changing appearance. Same angle consecutively. Shortening style. Instruction-like text.
+10. PROHIBITED: CRITICAL—Non-English text in sceneDesc/charProps/action. Word "Empty" in charProps. Color temperature. Changing appearance. Same angle consecutively. Shortening style. Instruction-like text.
 ${userDirections ? `\n=== ★ USER DIRECTIONS (HIGHEST PRIORITY — override all other rules if conflicting) ===\nThe user's special directions below MUST be reflected in EVERY generated prompt as the top priority. If written in non-English, translate the intent to English before applying.\n${userDirections}` : ''}
 
 === GENERATE ${batchScenes.length} IMAGE PROMPTS AS JSON ARRAY ===`;
@@ -3682,27 +3694,47 @@ async function _callGeminiSingle(script, numPrompts, apiKey, stylePrompt, nation
 
 /**
  * Convert character codes to descriptive phrases
- * MCR/SC1~SC5 -> "The Nth character" (max 6)
- * Only for stick figure styles to prevent text rendering in image
+/**
+ * Flow Studio Pro NextGen: 将角色与场景代号转换为 Google Flow 原生 @mention 标签
+ * 支持自动匹配用户在资产管理器中填写的个性化名称 (如 @Alice, @CyberBar)
  */
 function convertCharacterCodes(text) {
     if (!text) return text;
 
+    const root = typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : {});
+    const customChars = root.APP?.customCharRefs || {};
+    const customScenes = root.APP?.customSceneRefs || {};
+
+    const getTag = (code, store, defaultTag) => {
+        const item = store[code];
+        if (item && item.name && item.name.trim()) {
+            const raw = item.name.trim();
+            return raw.startsWith('@') ? raw : `@${raw}`;
+        }
+        return defaultTag;
+    };
+
     return text
-        .replace(/\bMCR\b/g, 'The main character')
-        .replace(/\bSC1\b/g, 'The second character')
-        .replace(/\bSC2\b/g, 'The third character')
-        .replace(/\bSC3\b/g, 'The fourth character')
-        .replace(/\bSC4\b/g, 'The fifth character')
-        .replace(/\bSC5\b/g, 'The sixth character');
+        .replace(/\bMCR\b/g, getTag('MCR', customChars, '@MCR'))
+        .replace(/\bSC1\b/g, getTag('SC1', customChars, '@SC1'))
+        .replace(/\bSC2\b/g, getTag('SC2', customChars, '@SC2'))
+        .replace(/\bSC3\b/g, getTag('SC3', customChars, '@SC3'))
+        .replace(/\bSC4\b/g, getTag('SC4', customChars, '@SC4'))
+        .replace(/\bSC5\b/g, getTag('SC5', customChars, '@SC5'))
+        .replace(/\bSCN1\b/g, getTag('SCN1', customScenes, '@SCN1'))
+        .replace(/\bSCN2\b/g, getTag('SCN2', customScenes, '@SCN2'))
+        .replace(/\bSCN3\b/g, getTag('SCN3', customScenes, '@SCN3'))
+        .replace(/\bSCN4\b/g, getTag('SCN4', customScenes, '@SCN4'));
 }
+
 
 /**
  * V4.0.5 System Prompt - JSON Output Format
  * Updated: JSON output for reliable parsing
  * Updated: Stick figure character rules for Style 7, 8
  */
-function buildSystemPromptV4(script, numPrompts, stylePrompt, nationality, styleId = '1', userDirections = '') {
+function buildSystemPromptV4(script, numPrompts, stylePrompt, nationality = 'Universal', styleId = '1', userDirections = '') {
+    const { isUniv, natContextTag, natCharToken } = _resolveNationalityTokens(nationality);
     // Stick figure styles need special character rules
     const isStickMan = styleId === '27';
     const isStickWoman = styleId === '28';
@@ -3712,7 +3744,7 @@ function buildSystemPromptV4(script, numPrompts, stylePrompt, nationality, style
     // 스틱 피규어: 스타일과 캐릭터를 charProps에 통합하여 중복 방지
     const charPropsTemplate = isStickFigure
         ? `{CharCode} is a 2D stick figure ${isStickWoman ? 'woman' : 'man'} (simple white round head, thin black line body${isStickWoman ? ', pastel accessories like ribbon/bow' : ''}) in humorous 2D illustration style, wearing {color} ${isStickWoman ? 'pastel ' : ''}outfit.`
-        : `{CharCode}(${nationality} {gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}).`;
+        : `{CharCode}(${natCharToken}{gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}).`;
 
     const stickFigureRules = isStickFigure ? `
 STICK FIGURE RULES (Style ${styleId}):
@@ -3742,8 +3774,8 @@ JSON Structure:
   {
     "number": "01",
     "characters": "MCR",
-    "scriptText": "대본첫12자공백제거",
-    "sceneDesc": "[${nationality} Context] {Shot}, {Angle}. [no name labels]. {FULL style description}. {time}. {place}. {light}.",
+    "scriptText": "林风推开咖啡馆的大门",
+    "sceneDesc": "${natContextTag}{Shot}, {Angle}. [no name labels]. {FULL style description}. {time}. {place}. {light}.",
     "charProps": "${charPropsTemplate}",
     "action": "{action}. {expression}. {mood}."
   }
@@ -3752,13 +3784,13 @@ JSON Structure:
 ═══ EXAMPLES — scenePrompts (follow these patterns EXACTLY) ═══
 
 EXAMPLE A — Two humans (charProps MUST have ALL identity tokens for EVERY character):
-{ "number": "01", "characters": "MCR,SC1", "scriptText": "갑자기사레가들렸다", "sceneDesc": "[${nationality} Context] Full shot, Eye level. [no name labels]. ${stylePrompt}. Dawn. Narrow residential alley. Soft golden streetlight glow.", "charProps": "MCR(${nationality === 'Korean' ? 'Korean' : nationality} female, 25yo, slim, long straight black hair with side-swept bangs, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC1(${nationality === 'Korean' ? 'Korean' : nationality} male, 35yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses, silver chain bracelet).", "action": "MCR and SC1 walking through dawn alley. Surprised expression." }
+{ "number": "01", "characters": "MCR,SC1", "scriptText": "林风推开咖啡馆的大门", "sceneDesc": "${natContextTag}Full shot, Eye level. [no name labels]. ${stylePrompt}. Dawn. Narrow street. Soft golden streetlight glow.", "charProps": "MCR(${natCharToken}female, 25yo, slim, long straight black hair with side-swept bangs, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC1(${natCharToken}male, 35yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses, silver chain bracelet).", "action": "MCR and SC1 walking through dawn street. Surprised expression." }
 
 EXAMPLE B — Human + Animal (non-human SC2 with full identity tokens):
-{ "number": "05", "characters": "MCR,SC2", "scriptText": "공원에서산책하며", "sceneDesc": "[${nationality} Context] Full shot, Low angle. [no name labels]. ${stylePrompt}. Afternoon. City park with autumn leaves. Warm golden hour light.", "charProps": "MCR(${nationality === 'Korean' ? 'Korean' : nationality} female, 25yo, slim, long straight black hair with side-swept bangs, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC2(golden retriever, large, golden fur, floppy ears, brown eyes, red tartan bandana collar, bushy tail).", "action": "MCR walking with SC2 on leash through autumn park. Gentle smile." }
+{ "number": "05", "characters": "MCR,SC2", "scriptText": "小雨带着金毛在公园散步", "sceneDesc": "${natContextTag}Full shot, Low angle. [no name labels]. ${stylePrompt}. Afternoon. City park with autumn leaves. Warm golden hour light.", "charProps": "MCR(${natCharToken}female, 25yo, slim, long straight black hair with side-swept bangs, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC2(golden retriever, large, golden fur, floppy ears, brown eyes, red tartan bandana collar, bushy tail).", "action": "MCR walking with SC2 on leash through autumn park. Gentle smile." }
 
 EXAMPLE C — Background-only (no character):
-{ "number": "08", "characters": "", "scriptText": "고요한새벽바다위로", "sceneDesc": "[${nationality} Context] Full shot, Bird's eye. [no name labels]. ${stylePrompt}. Pre-dawn. Calm ocean surface. Deep blue-violet sky with faint horizon glow.", "charProps": "Establishing shot of calm pre-dawn ocean. Deep blue-violet water stretching to horizon, faint orange glow at the edge.", "action": "Vast ocean, quiet atmosphere. Serene, contemplative mood." }
+{ "number": "08", "characters": "", "scriptText": "海浪在晨曦中拍打着礁石", "sceneDesc": "${natContextTag}Full shot, Bird's eye. [no name labels]. ${stylePrompt}. Pre-dawn. Calm ocean surface. Deep blue-violet sky with faint horizon glow.", "charProps": "Establishing shot of calm pre-dawn ocean. Deep blue-violet water stretching to horizon, faint orange glow at the edge.", "action": "Vast ocean, quiet atmosphere. Serene, contemplative mood." }
 
 ═══ KEY: charProps identity tokens MUST be IDENTICAL in EVERY prompt for the same character. NEVER abbreviate. ═══
 
@@ -3809,12 +3841,12 @@ ${isStickFigure ? `   - MCR=blue outfit, SC1=purple outfit, SC2=green outfit` : 
 5. scriptText RULES:
    - Copy the FIRST part of the script line VERBATIM (NO summarizing, NO paraphrasing)
    - Remove ALL spaces and punctuation, take first 14 chars
-   - Example: "갑자기사레가들렸다음식을" (from "갑자기 사레가 들렸다! 음식을...")
+   - Example: "林风推开咖啡馆的大门"
    - Example: "Theoldmanwalked" (from "The old man walked slowly...")
    - This is for filename only
 
 6. sceneDesc RULES:
-   - Start with [${nationality} Context]
+   - ${natContextTag ? `Start with ${natContextTag}` : 'Start with shot, angle'}
    - Include [no name labels]
    - Include style: "${stylePrompt}"
    - Include time, place, light — ALL IN ENGLISH
@@ -3822,7 +3854,7 @@ ${isStickFigure ? `   - DO NOT mention "stick figure" in sceneDesc (it goes in c
 
 7. charProps RULES:
    - When characters="" use "Establishing shot of {place}." or "Big close-up of {subject}." — one-off backgrounds/props only. For body-part: "MCR(extreme close-up of {hands/face/eyes/feet}, {action/expression})"
-   - HUMAN characters: Write FULL description for EVERY character in EVERY prompt. Format: MCR(${nationality} female, 25yo, slim, long straight black hair, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC1(${nationality} male, 28yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses). NEVER abbreviate as "MCR(...)" or "SC1(same as before)". AI image generators have NO memory — each prompt must be SELF-CONTAINED. ALL identity tokens MANDATORY: build, hair (length+color+style), outfit (color+pattern+type), accessories/glasses. plain/solid/무지 FORBIDDEN (except stick-figure styles where solid color is allowed).
+   - HUMAN characters: Write FULL description for EVERY character in EVERY prompt. Format: MCR(${natCharToken}female, 25yo, slim, long straight black hair, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC1(${natCharToken}male, 28yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses). NEVER abbreviate as "MCR(...)" or "SC1(same as before)". AI image generators have NO memory — each prompt must be SELF-CONTAINED. ALL identity tokens MANDATORY: build, hair (length+color+style), outfit (color+pattern+type), accessories/glasses. plain/solid/monochrome outfits FORBIDDEN (except stick-figure styles where solid color is allowed).
    - NON-HUMAN coded characters: repeat full identity in EVERY prompt. E.g. "MCR(golden retriever, large, golden fur, floppy ears, red bandana collar)." or "SC1(cherry blossom tree, full bloom, pink petals, 3m tall)."
 ${stickFigureRules}
 
@@ -3925,10 +3957,11 @@ EXAMPLE: If user's MCR prompt says "standing pose with hands on hips, neutral sm
     const isStickWoman = styleId === '28';
     const isStickFigure = isStickMan || isStickWoman;
 
+    const { isUniv, natContextTag, natCharToken } = _resolveNationalityTokens(nationality);
     // Character props template based on style
     const charPropsTemplate = isStickFigure
         ? `{CharCode} is a 2D stick figure ${isStickWoman ? 'woman' : 'man'} (simple white round head, thin black line body${isStickWoman ? ', pastel accessories like ribbon/bow' : ''}) in humorous 2D illustration style, wearing {color} ${isStickWoman ? 'pastel ' : ''}outfit.`
-        : `{CharCode}(${nationality} {gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}).`;
+        : `{CharCode}(${natCharToken}{gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}).`;
 
     const stickFigureRules = isStickFigure ? `
 STICK FIGURE RULES (Style ${styleId}):
@@ -3951,23 +3984,26 @@ SCRIPT CONTEXT & HISTORICAL ACCURACY:
 JOSEON-SPECIFIC:
 - sceneDesc: Do NOT put outfit/costume/accessory details here. Only [Context], shot, angle, [no text...], FULL style, time, place, light.` : '';
 
-    // Character name format based on nationality — 비한국 시 이름은 반드시 영어 스펠링
+    // Character name format based on nationality
     const isKorean = nationality === 'Korean';
+    const isChinese = nationality === 'Chinese';
     const charNameFormat = isKorean
-        ? `"name": "캐릭터 이름 (한글, 예: 한국남성, 김철수)"`
-        : `"name": "Character Name (in English only, e.g., Jia or Sarah — Romanized or English, never 한글)"`;
-    const exampleCharName = isKorean ? '이수아' : 'Jia';
-    const exampleCharDesc = isKorean ? 'Korean female, 25yo, slim, long straight black hair, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings' : `${nationality} female, 25yo, slim, long straight black hair, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings`;
+        ? `"name": "캐릭터 이름 (한글, 예: 김철수, 이수아)"`
+        : isChinese
+            ? `"name": "角色名称 (中文名或英文名，如: 小雨, 林风, Lucy)"`
+            : `"name": "Character Name (in English or native script spelling, e.g., Alex, Elena)"`;
+    const exampleCharName = isKorean ? '이수아' : (isChinese ? '小雨' : 'Elena');
+    const exampleCharDesc = `${natCharToken}female, 25yo, slim, long straight black hair, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings`.trim();
 
     // Character reference description template - different for stick figures
     // Change 3: Use {gender} per character (MCR/SC1/SC2 each can be man or woman)
     const charRefDescTemplate = isStickFigure
         ? `2D stick figure {gender}, simple white round head, thin black line body{female_stick_detail}, wearing {color} {outfit_modifier}outfit`
-        : `${nationality} {gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}`;
+        : `${natCharToken}{gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}`.trim();
 
     // ★ v1.5: 2-레이어 데이터 스키마 기반 — 인물 캐릭터 레퍼런스는 fullPrompt (rendering + humanIdentity)
     //   비인물 캐릭터 레퍼런스 생성은 Gemini가 HUMAN IDENTITY LAYER 지침을 따라 humanIdentity 제외 결정
-    const charRefPrefix = `[${nationality} Context]. [no name labels]. ${styleLayers.fullPrompt}. `;
+    const charRefPrefix = `${natContextTag}[no name labels]. ${styleLayers.fullPrompt}. `;
     const charRefStyleEnv = `Match image style, rendering, texture, color and aesthetic across all panels. Clean mid-gray neutral solid background. 16:9 aspect ratio. `;
     const charRefPromptTemplate = isStickFigure
         ? charRefPrefix + `2D stick figure {gender} (simple white round head, thin black line body{female_stick_detail}) in humorous 2D illustration style. Full body shot, front facing, studio background. {CharCode} wearing {color} {outfit_modifier}outfit. Standing in neutral pose. Character reference portrait.`
@@ -3976,7 +4012,7 @@ JOSEON-SPECIFIC:
     // refSheetPrompt: style/env + LEFT = face 2x2, RIGHT = full body. Same character, consistent lighting.
     const charRefSheetTemplate = isStickFigure
         ? charRefPrefix + `[{CharCode}] Character reference sheet. ${charRefStyleEnv}16:9 canvas split vertically. LEFT panel: 4 equal cells (2x2 grid) for face close-ups — top-left: face front, camera-facing; top-right: face 3/4 view facing left; bottom-left: face 3/4 view facing right; bottom-right: face profile (side view). Uniform face size and even spacing. RIGHT panel: 2 equal cells (vertical split) — top: full body front, standing neutral pose; bottom: full body back, same pose. Maintain consistent anatomy, proportion, size and alignment. 2D stick figure {gender} (simple white round head, thin black line body{female_stick_detail}) in humorous 2D illustration style. {color} {outfit_modifier}outfit. Consistent lighting across all panels.`
-        : charRefPrefix + `[{CharCode}] Character reference sheet. ${charRefStyleEnv}16:9 canvas split vertically. LEFT panel: 4 equal cells (2x2 grid) for face close-ups — top-left: face front, camera-facing; top-right: face 3/4 view facing left; bottom-left: face 3/4 view facing right; bottom-right: face profile (side view). Uniform face size and even spacing. RIGHT panel: 2 equal cells (vertical split) — top: full body front, standing neutral pose; bottom: full body back, same pose. Maintain consistent anatomy, proportion, size and alignment. {nationality} {gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}. Same character in all panels (unified facial features, hair, skin tone, body build). Consistent lighting.`;
+        : charRefPrefix + `[{CharCode}] Character reference sheet. ${charRefStyleEnv}16:9 canvas split vertically. LEFT panel: 4 equal cells (2x2 grid) for face close-ups — top-left: face front, camera-facing; top-right: face 3/4 view facing left; bottom-left: face 3/4 view facing right; bottom-right: face profile (side view). Uniform face size and even spacing. RIGHT panel: 2 equal cells (vertical split) — top: full body front, standing neutral pose; bottom: full body back, same pose. Maintain consistent anatomy, proportion, size and alignment. ${natCharToken}{gender}, {age}yo, {build}, {hair length/color/style}, wearing {color} {pattern} {outfit}, {accessories/glasses}. Same character in all panels (unified facial features, hair, skin tone, body build). Consistent lighting.`;
 
     return `You are a storyboard artist for Grok AI.
 ${preProvidedBlock}
@@ -4053,8 +4089,8 @@ JSON Structure:
     {
       "number": "01",
       "characters": "MCR",
-      "scriptText": "대본첫12자공백제거",
-      "sceneDesc": "[${nationality} Context] {Shot}, {Angle}. [no name labels]. {environment/rendering tokens from STYLE — exclude ANY human-identity tokens like clothing/hair/accessories}. {time}. {place}. {light}.",
+      "scriptText": "林风推开咖啡馆的大门",
+      "sceneDesc": "${natContextTag}{Shot}, {Angle}. [no name labels]. {environment/rendering tokens from STYLE — exclude ANY human-identity tokens like clothing/hair/accessories}. {time}. {place}. {light}.",
       "charProps": "${charPropsTemplate}",
       "action": "{action}. {expression}. {mood}.",
       "charActions": { "MCR": "MCR's specific action and expression" }
@@ -4065,30 +4101,33 @@ JSON Structure:
 ═══ EXAMPLES — characterRefs (follow these patterns EXACTLY) ═══
 
 EXAMPLE 1 — HUMAN female MCR (ALL identity tokens: build, hair length+color+style, outfit color+pattern+type+inner, glasses frame, accessories):
-{ "code": "MCR", "name": "${exampleCharName}", "description": "${exampleCharDesc}", "prompt": "[${nationality} Context]. [no name labels]. Hyper-realistic cinematic photograph. ${nationality} drama aesthetic. Natural lighting. High-quality DSLR photography. MCR(${exampleCharDesc}). Full body shot, front facing. Standing in neutral pose, arms relaxed. Calm expression. Character reference portrait.", "refSheetPrompt": "[${nationality} Context]. [no name labels]. Hyper-realistic cinematic photograph. ${nationality} aesthetic. Natural lighting. High-quality DSLR photography. [MCR] Character reference sheet. Match style, rendering, texture, color across all panels. Mid-gray neutral background. 16:9. LEFT: 4 cells (2x2) face close-ups — front, 3/4 left, 3/4 right, profile. RIGHT: 2 cells — full body front, full body back. Same character, consistent lighting. ${exampleCharDesc}." }
+{ "code": "MCR", "name": "${exampleCharName}", "description": "${exampleCharDesc}", "prompt": "${natContextTag}[no name labels]. Hyper-realistic cinematic photograph. ${natCharToken}aesthetic. Natural lighting. High-quality DSLR photography. MCR(${exampleCharDesc}). Full body shot, front facing. Standing in neutral pose, arms relaxed. Calm expression. Character reference portrait.", "refSheetPrompt": "${natContextTag}[no name labels]. Hyper-realistic cinematic photograph. ${natCharToken}aesthetic. Natural lighting. High-quality DSLR photography. [MCR] Character reference sheet. Match style, rendering, texture, color across all panels. Mid-gray neutral background. 16:9. LEFT: 4 cells (2x2) face close-ups — front, 3/4 left, 3/4 right, profile. RIGHT: 2 cells — full body front, full body back. Same character, consistent lighting. ${exampleCharDesc}." }
 
 EXAMPLE 2 — HUMAN male SC1 (heavyset build, explicit "no glasses", different outfit):
-{ "code": "SC1", "name": "${isKorean ? '동훈' : 'James'}", "description": "${nationality === 'Korean' ? 'Korean' : nationality} male, 35yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses, silver chain bracelet", "prompt": "[${nationality} Context]. [no name labels]. Hyper-realistic cinematic photograph. SC1(${nationality === 'Korean' ? 'Korean' : nationality} male, 35yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses, silver chain bracelet). Full body shot, front facing. Standing in neutral pose. Character reference portrait.", "refSheetPrompt": "[${nationality} Context]. [no name labels]. Hyper-realistic cinematic photograph. [SC1] Character reference sheet. Match style, rendering, texture, color across all panels. Mid-gray neutral background. 16:9. LEFT: 4 cells (2x2) face close-ups — front, 3/4 left, 3/4 right, profile. RIGHT: 2 cells — full body front, full body back. Same character, consistent lighting. ${nationality === 'Korean' ? 'Korean' : nationality} male, 35yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses, silver chain bracelet." }
+{ "code": "SC1", "name": "${isKorean ? '동훈' : (isChinese ? '林风' : 'James')}", "description": "${natCharToken}male, 35yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses, silver chain bracelet", "prompt": "${natContextTag}[no name labels]. Hyper-realistic cinematic photograph. SC1(${natCharToken}male, 35yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses, silver chain bracelet). Full body shot, front facing. Standing in neutral pose. Character reference portrait.", "refSheetPrompt": "${natContextTag}[no name labels]. Hyper-realistic cinematic photograph. [SC1] Character reference sheet. Match style, rendering, texture, color across all panels. Mid-gray neutral background. 16:9. LEFT: 4 cells (2x2) face close-ups — front, 3/4 left, 3/4 right, profile. RIGHT: 2 cells — full body front, full body back. Same character, consistent lighting. ${natCharToken}male, 35yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses, silver chain bracelet." }
 
 EXAMPLE 3 — NON-HUMAN animal MCR (species, fur color/pattern, size, distinguishing features):
-{ "code": "MCR", "name": "Buddy", "description": "golden retriever, large, golden fur, floppy ears, brown eyes, red tartan bandana collar, bushy tail", "prompt": "[${nationality} Context]. [no name labels]. Hyper-realistic cinematic photograph. Natural lighting. MCR(golden retriever, large, golden fur, floppy ears, brown eyes, red tartan bandana collar, bushy tail). Full body shot, front facing. Standing on grass, alert pose. Character reference portrait.", "refSheetPrompt": "[${nationality} Context]. [no name labels]. Hyper-realistic cinematic photograph. [MCR] Character reference sheet. Mid-gray neutral background. 16:9. LEFT: 4 cells (2x2) face close-ups — front, 3/4 left, 3/4 right, profile. RIGHT: 2 cells — full body side view, full body front. Same animal, consistent lighting. Golden retriever, large, golden fur, floppy ears, brown eyes, red tartan bandana collar, bushy tail." }
+{ "code": "MCR", "name": "Buddy", "description": "golden retriever, large, golden fur, floppy ears, brown eyes, red tartan bandana collar, bushy tail", "prompt": "${natContextTag}[no name labels]. Hyper-realistic cinematic photograph. Natural lighting. MCR(golden retriever, large, golden fur, floppy ears, brown eyes, red tartan bandana collar, bushy tail). Full body shot, front facing. Standing on grass, alert pose. Character reference portrait.", "refSheetPrompt": "${natContextTag}[no name labels]. Hyper-realistic cinematic photograph. [MCR] Character reference sheet. Mid-gray neutral background. 16:9. LEFT: 4 cells (2x2) face close-ups — front, 3/4 left, 3/4 right, profile. RIGHT: 2 cells — full body side view, full body front. Same animal, consistent lighting. Golden retriever, large, golden fur, floppy ears, brown eyes, red tartan bandana collar, bushy tail." }
 
 ═══ KEY: description, charProps, refSheetPrompt ending MUST contain the IDENTICAL identity token string. ═══
 
 ═══ EXAMPLES — scenePrompts (follow these patterns EXACTLY) ═══
 
 EXAMPLE A — Two humans (FULL identity in charProps for EVERY character):
-{ "number": "01", "characters": "MCR,SC1", "scriptText": "갑자기사레가들렸다", "sceneDesc": "[${nationality} Context] Full shot, Eye level. [no name labels]. Hyper-realistic cinematic photograph. ${nationality} drama aesthetic. Dawn. Narrow residential alley. Soft golden streetlight glow.", "charProps": "MCR(${nationality === 'Korean' ? 'Korean' : nationality} female, 25yo, slim, long straight black hair with side-swept bangs, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC1(${nationality === 'Korean' ? 'Korean' : nationality} male, 35yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses, silver chain bracelet).", "action": "MCR and SC1 walking through dawn alley. Surprised expression.", "charActions": { "MCR": "stops mid-step, hand on chest, startled wide-eyed expression.", "SC1": "turns head toward MCR, protective concerned frown." } }
+{ "number": "01", "characters": "MCR,SC1", "scriptText": "林风推开咖啡馆的大门", "sceneDesc": "${natContextTag}Full shot, Eye level. [no name labels]. Hyper-realistic cinematic photograph. ${natCharToken}aesthetic. Dawn. Narrow street. Soft golden streetlight glow.", "charProps": "MCR(${exampleCharDesc}). SC1(${natCharToken}male, 35yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses, silver chain bracelet).", "action": "MCR and SC1 walking through dawn street. Surprised expression.", "charActions": { "MCR": "stops mid-step, hand on chest, startled wide-eyed expression.", "SC1": "turns head toward MCR, protective concerned frown." } }
 
 EXAMPLE B — Human + Animal together:
-{ "number": "05", "characters": "MCR,SC2", "scriptText": "공원에서산책하며", "sceneDesc": "[${nationality} Context] Full shot, Low angle. [no name labels]. Hyper-realistic cinematic photograph. Afternoon. City park with autumn leaves. Warm golden hour light.", "charProps": "MCR(${nationality === 'Korean' ? 'Korean' : nationality} female, 25yo, slim, long straight black hair with side-swept bangs, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC2(golden retriever, large, golden fur, floppy ears, brown eyes, red tartan bandana collar, bushy tail).", "action": "MCR walking with SC2 on leash through autumn park.", "charActions": { "MCR": "smiles gently, holding leash loosely, relaxed stride.", "SC2": "trots alongside happily, tail wagging, sniffing fallen leaves." } }
+{ "number": "05", "characters": "MCR,SC2", "scriptText": "小雨带着金毛在公园散步", "sceneDesc": "${natContextTag}Full shot, Low angle. [no name labels]. Hyper-realistic cinematic photograph. Afternoon. City park with autumn leaves. Warm golden hour light.", "charProps": "MCR(${exampleCharDesc}). SC2(golden retriever, large, golden fur, floppy ears, brown eyes, red tartan bandana collar, bushy tail).", "action": "MCR walking with SC2 on leash through autumn park.", "charActions": { "MCR": "smiles gently, holding leash loosely, relaxed stride.", "SC2": "trots alongside happily, tail wagging, sniffing fallen leaves." } }
 
 EXAMPLE C — Background-only (no character, one-off scenery):
-{ "number": "08", "characters": "", "scriptText": "고요한새벽바다위로", "sceneDesc": "[${nationality} Context] Full shot, Bird's eye. [no name labels]. Hyper-realistic cinematic photograph. Pre-dawn. Calm ocean surface. Deep blue-violet sky with faint horizon glow.", "charProps": "Establishing shot of calm pre-dawn ocean. Deep blue-violet water stretching to horizon, faint orange glow at the edge, still and peaceful.", "action": "Vast ocean, quiet atmosphere. Serene, contemplative mood.", "charActions": {} }
+{ "number": "08", "characters": "", "scriptText": "海浪在晨曦中拍打着礁石", "sceneDesc": "${natContextTag}Full shot, Bird's eye. [no name labels]. Hyper-realistic cinematic photograph. Pre-dawn. Calm ocean surface. Deep blue-violet sky with faint horizon glow.", "charProps": "Establishing shot of calm pre-dawn ocean. Deep blue-violet water stretching to horizon, faint orange glow at the edge, still and peaceful.", "action": "Vast ocean, quiet atmosphere. Serene, contemplative mood.", "charActions": {} }
 
 === CHARACTER REFERENCE RULES ===
 
-0. CHARACTER NAME LANGUAGE (CRITICAL): When nationality is Korean, characterRefs[].name may be in Korean (한글). When nationality is NOT Korean (e.g. American, Black, Japanese, Southeast Asian, Indian, Latin American, Arab), characterRefs[].name MUST be in English only — use Romanized spelling (e.g. Jia) or an English name. Never use 한글 for name when nationality is not Korean.
+0. CHARACTER NAME LANGUAGE (CRITICAL): Match the language of the script (Chinese, English, Korean, etc.).
+   - Chinese script: Chinese characters (中文名，如 小雨、林风) or English names are recommended.
+   - Korean script: Korean (한글) or English names are allowed.
+   - Universal / English: English or Romanized names.
 
 1. CHARACTER IDENTIFICATION:
    - Analyze script and identify characters that ACTUALLY appear
@@ -4121,7 +4160,7 @@ ${isStickFigure ? `   - MCR=blue outfit, SC1=purple outfit, SC2=green outfit` : 
    - Wardrobe Change: only when script explicitly indicates a change
 
 5. REF SHEET PROMPT & PROMPT:
-   - MUST start with [${nationality} Context]. [no name labels]. {FULL style}. Then [{CharCode}].
+   - ${natContextTag ? `MUST start with ${natContextTag} ` : ''}[no name labels]. {FULL style}. Then [{CharCode}].
    - refSheetPrompt: Match image style, rendering, texture, color and aesthetic across all panels. Clean mid-gray neutral solid background. 16:9 aspect ratio. LEFT = 4 cells (2x2) face close-ups: front, 3/4 left, 3/4 right, profile. RIGHT = 2 cells: full body front, full body back. Same character, consistent lighting.
    - [{CharCode}] at front. Replace {CharCode} with actual code (MCR, SC1, SC2, SC3, SC4, SC5 as needed, max 6).
 ${isStickFigure ? `   - For stick figures: {gender}=man|woman per character from script. {female_stick_detail}=', pastel accessories like ribbon/bow' for female, '' for male. {outfit_modifier}='pastel ' for female, '' for male.` : ''}
@@ -4160,7 +4199,7 @@ ${isStickFigure ? `   - For stick figures: {gender}=man|woman per character from
    - Within every 10 scenes: at least TWO (20%) must be MACRO close-ups (categories a~e above) — not just regular Big close-ups.
    - Angles: eye level, low angle, high angle, bird's eye, Dutch angle, macro. Cycle through all 6.
 
-3. LANGUAGE (CRITICAL): sceneDesc, charProps, action MUST be 100% English. NO Korean, no 한글. scriptText keeps original. Translate: 새벽→dawn, 주택가 골목→residential alley, 가로등 불빛→streetlight glow, 어둡고 을씨년스러운→dark dreary, 분위기→atmosphere.
+3. LANGUAGE (CRITICAL): sceneDesc, charProps, action MUST be 100% English. Non-English narrative words must be translated into English for image prompts. scriptText keeps original text.
 
 4. scriptText RULES:
    - Copy the FIRST part of the script assigned to THIS scene VERBATIM (NO summarizing, NO paraphrasing)
@@ -4170,8 +4209,7 @@ ${isStickFigure ? `   - For stick figures: {gender}=man|woman per character from
    - This is for filename only
 
 5. sceneDesc RULES:
-   - Start with [${nationality} Context]
-   - Include [no name labels]
+${natContextTag ? `   - Start with ${natContextTag}\n` : ''}   - Include [no name labels]
    - Include FULL style description (use complete style prompt — DO NOT shorten) and time, place, light — ALL IN ENGLISH
 ${isJoseon ? `   - Do NOT put outfit/costume/accessory (Hanbok, gat, etc.) in sceneDesc — those go in charProps only` : ''}
 ${isStickFigure ? `   - DO NOT mention "stick figure" in sceneDesc (it goes in charProps only)` : ''}
@@ -4179,7 +4217,7 @@ ${isStickFigure ? `   - DO NOT mention "stick figure" in sceneDesc (it goes in c
 6. charProps RULES:
    - When characters="" use "Establishing shot of {place}." or "Big close-up of {subject}." — one-off backgrounds/props only, no character in frame.
    - For body-part big close-up (hands writing, fingers, face/eyes, feet on ice): "MCR(extreme close-up of {hands/face/eyes/feet}, {action/expression}, psychological portrait when face)"
-   - HUMAN characters: Write FULL description for EVERY character in EVERY prompt. Format: MCR(${nationality} female, 25yo, slim, long straight black hair, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC1(${nationality} male, 28yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses). NEVER abbreviate as "MCR(...)" or "SC1(same as before)". AI image generators have NO memory — each prompt must be SELF-CONTAINED. ALL identity tokens MANDATORY: build, hair (length+color+style), outfit (color+pattern+type), accessories/glasses. plain/solid/무지 FORBIDDEN (except stick-figure styles where solid color is allowed).
+   - HUMAN characters: Write FULL description for EVERY character in EVERY prompt. Format: MCR(${natCharToken}female, 25yo, slim, long straight black hair, wearing burgundy plaid blazer over cream inner blouse and dark navy pencil skirt, thin round gold-frame glasses, small pearl earrings). SC1(${natCharToken}male, 28yo, heavyset, short cropped grey hair, wearing charcoal checked hoodie over light-gray inner t-shirt and dark cargo pants, no glasses). NEVER abbreviate as "MCR(...)" or "SC1(same as before)". AI image generators have NO memory — each prompt must be SELF-CONTAINED. ALL identity tokens MANDATORY: build, hair (length+color+style), outfit (color+pattern+type), accessories/glasses. plain/solid/무지 FORBIDDEN (except stick-figure styles where solid color is allowed).
    - NON-HUMAN coded characters: repeat full identity in EVERY prompt. E.g. "MCR(golden retriever, large, golden fur, floppy ears, red bandana collar)." or "SC1(cherry blossom tree, full bloom, pink petals, 3m tall)."
 ${stickFigureRules}
 ${scriptContextRules}
@@ -4187,7 +4225,7 @@ ${joseonRules}
 
 7. SKIP: Do NOT generate prompts for: title cards (e.g. "A title card appears", "Title card for", N단계 markers like 9단계진실폭로), part/phase dividers (1부완료, 2부 등), production notes (Display...), structural markers, lines in [...] brackets (e.g. [Intro], [Verse 1], [Chorus], [Bridge], [Outro]), lines in (...) parentheses (e.g. (instrumental...), (fade out...)), vocal fillers (um um um, la la la), or any meta-text. You MUST distinguish actual narrative from non-narrative using your reasoning ability. Ask yourself: "Can this line be visualized as an image scene?" If NO (section headers, stage directions, instrument cues, timestamps, credits, structural dividers, meta-comments), SKIP it. Generate prompts ONLY for lines that describe visualizable content: character actions, dialogue, emotions, settings, or story moments.
 8. PROHIBITED:
-   - Korean text in sceneDesc, charProps, or action fields
+   - Non-English text in sceneDesc, charProps, or action fields (scene prompts must be in English)
    - CRITICAL: Abbreviating charProps with "(...)" or "same as before" — ALWAYS write FULL character descriptions
    - Color temperature (2700K)
    - Changing appearance between scenes
@@ -4728,9 +4766,9 @@ Each video prompt MUST include:
 - The goal: Make viewers UNABLE to scroll past. Every frame must DEMAND attention.
 
 === CHARACTER CODE REFERENCE ===
-- MCR = Main Character (주인공)
-- SC1 = Supporting Character 1 (조연1)
-- SC2 = Supporting Character 2 (조연2)
+- MCR = Main Character (主角 / 주인공)
+- SC1 = Supporting Character 1 (配角1 / 조연1)
+- SC2 = Supporting Character 2 (配角2 / 조연2)
 - SC3, SC4, SC5 = Additional supporting (max 6 total: MCR + SC1~SC5)
 - Empty = No specific character focus (background, objects, scenery)
 Use these codes in videoPrompt to refer to characters (e.g., "MCR gestures", "SC1 looks at MCR")
@@ -4740,8 +4778,9 @@ If the scriptText contains a POWERFUL/EMOTIONAL dialogue line that hooks viewers
 - Include that dialogue IN THE ORIGINAL LANGUAGE in your video prompt
 - ⚠️ IMPORTANT: Use「」brackets for dialogue (NOT double quotes " " which break JSON!)
 - Format: lips move speaking [Language] dialogue:「actual dialogue」
-- Korean script → lips move speaking Korean dialogue:「뭐라고? 너가 그러고도 내 며느리야!」
+- Chinese script → lips move speaking Chinese dialogue:「你到底在隐瞒什么？！」
 - English script → lips move speaking English dialogue:「How dare you!」
+- Korean script → lips move speaking Korean dialogue:「뭐라고? 너가 그러고도 내 며느리야!」
 - Japanese script → lips move speaking Japanese dialogue:「何だと!」
 - NOT every scene needs dialogue — only include if it's a HOOKING moment
 
@@ -4754,7 +4793,7 @@ Return ONLY a JSON array with these fields:
 - "number": scene number (01, 02, 03...)
 - "characters": character codes from image prompt (MCR, SC1, MCR,SC1, or empty)
 - "scriptText": EXACT same scriptText from corresponding image prompt
-- "videoPrompt": [Context] + camera + action + emotion + atmosphere + dialogue(if hooking)
+- "videoPrompt": camera + action + emotion + atmosphere + dialogue(if hooking)
 
 === JSON FORMAT RULES (CRITICAL) ===
 - Return ONLY valid JSON array — no markdown code blocks (no \`\`\`)
@@ -4763,27 +4802,27 @@ Return ONLY a JSON array with these fields:
 - ⚠️ NEVER use double quotes " " inside videoPrompt value — use「」for dialogue instead
 - Do NOT use single quotes — use double quotes only for JSON structure
 - Do NOT include trailing commas after last array/object item
-- If you must include quotes in text, escape them as \\"
+- If you must include quotes in text, escape them as \"
 
 === OUTPUT EXAMPLES ===
 [
   {
     "number": "01",
     "characters": "MCR",
-    "scriptText": "두바이쫀득쿠키요처음보",
-    "videoPrompt": "[Korean Context] Full shot, modern studio, day. Slow zoom in towards MCR, confident stance with subtle weight shift, right hand gestures expressively towards screen, eyebrows raise with curious intrigue, head tilts slightly, lips move speaking Korean dialogue:「두바이 쫀득쿠키요? 처음 보는데요?」, warm studio lighting casts soft shadows"
+    "scriptText": "林风推开咖啡馆的木门",
+    "videoPrompt": "Full shot, modern cozy cafe, afternoon. Slow zoom in towards MCR, confident stance with subtle weight shift, right hand pushes the wooden door open, eyes scanning the room with curious intrigue, lips move speaking Chinese dialogue:「请问，这里有预订的座位吗？」, warm natural sunlight filtering through glass window"
   },
   {
     "number": "02",
     "characters": "MCR,SC1",
-    "scriptText": "시어머니가화난표정으",
-    "videoPrompt": "[Korean Context] Medium shot, modern kitchen, winter morning. Slow zoom on SC1's angry face, finger pointing accusingly at MCR, lips move speaking Korean dialogue:「뭐라고? 너가 그러고도 내 며느리야!」, MCR flinches back with fear in eyes, cold fluorescent light flickers"
+    "scriptText": "经理神色严肃地转过身",
+    "videoPrompt": "Medium shot, cafe counter, interior. Slow zoom on SC1's stern expression, turning around sharply, lips move speaking Chinese dialogue:「你终于来了，我们一直在等你。」, MCR hesitates with slight surprise in eyes, soft overhead warm pendant lighting"
   },
   {
     "number": "03",
     "characters": "MCR",
-    "scriptText": "며느리는슬피울고있",
-    "videoPrompt": "[Korean Context] Close-up, same kitchen. Static shot on MCR's face, subtle shoulder trembles, tears slowly form in eyes, downcast gaze avoids camera, deep breath with chest rising, melancholic winter light through window"
+    "scriptText": "窗外下起了淅淅沥沥的",
+    "videoPrompt": "Close-up, window side table. Static shot on MCR's face reflecting on the raindrop-covered glass window, subtle breath fogging the pane, thoughtful downcast gaze, melancholic rainy day ambient light"
   }
 ]
 

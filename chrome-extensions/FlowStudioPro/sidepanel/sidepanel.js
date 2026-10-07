@@ -7,8 +7,24 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
 // PASSWORD CONFIGURATION
 // =============================================
 
+// =============================================
+// SAFE UTILITIES
+// =============================================
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// =============================================
+// PASSWORD & LICENSE CONFIGURATION (PRO UNLOCKED)
+// =============================================
+
 const PASSWORD_CONFIG = {
-    apiUrl: 'https://script.google.com/macros/s/AKfycbyBRXjXgO5jKRHGC570KO-ZCMTjKzTbRkmFWd68ruJo3c37LK4dXtPH5uNAKrTp3xpA/exec',
     sessionHours: 24,
     sessionKey: 'gf_auth_session'
 };
@@ -85,99 +101,41 @@ Premium product shot of Product under minimal studio lighting
 Hero and Product together on a futuristic workstation`;
 
 // =============================================
-// MONETIZATION (FACTORY MODE PRO)
+// MONETIZATION (FLOW STUDIO PRO - UNLOCKED)
 // =============================================
 
 const MONETIZATION_CONFIG = {
-    // 플로우팩토리용 구글 시트 암호 API (수강생 프리패스용)
-    sheetApiUrl: 'https://script.google.com/macros/s/AKfycbz7W7-f8WVGyQS63ccXoEvJufZe3wGRs1-5y9ZuNBEz_jH5c9aZ9SMDSbYJFriEDcwa1Q/exec',
-    // License validation is kept for existing keys; promotional checkout links are intentionally disabled in AI4Next UI.
-    lemonSqueezyApiUrl: 'https://api.lemonsqueezy.com/v1/licenses/validate',
-    checkoutUrlMonthly: '',
-    checkoutUrlYearly: '',
-    // 로컬 스토리지 키
     licenseKey: 'gf_pro_license',
     usageKey: 'gf_monthly_usage',
-    // 월간 무료 한도 (팩토리+대본투이미지 통합 7회)
-    freeLimit: 7,
-    // ★ 커스텀 캐릭터 레퍼런스(CCR) 월 7회 추가 제한
-    //   - 7회 한도와 독립 카운트 (이중 카운트). 즉 CCR 사용 시 7회 + 7회 둘 다 체크
-    //   - 적용 모드: factory, scriptToImage, textToImage(P2I) 모두
-    //   - "CCR 토글 ON 상태에서 생성 시작" = 1회 (프로젝트 단위, 생성 이미지 개수 무관)
+    freeLimit: 999999,
     ccrUsageKey: 'gf_ccr_monthly_usage',
-    ccrFreeLimit: 7
+    ccrFreeLimit: 999999
 };
 
-// 1. 월간 카운터 (매월 1일 00:00 UTC 리셋)
-// 리셋 기준: YYYY-MM 변경 시 (예: 1월 31일 3회 사용 → 2월 1일 00:00 UTC부터 0으로 리셋)
+// 1. 월간 카운터
 async function getMonthlyUsage() {
-    const data = await chrome.storage.sync.get(MONETIZATION_CONFIG.usageKey);
-    const saved = data[MONETIZATION_CONFIG.usageKey];
     const thisMonth = new Date().toISOString().slice(0, 7);
-
-    if (!saved || saved.month !== thisMonth) {
-        const d = new Date();
-        d.setUTCMonth(d.getUTCMonth() + 1, 1);
-        const resetDate = d.toISOString().slice(0, 10); // 다음 달 1일
-        return { month: thisMonth, count: 0, resetDate };
-    }
-    return { ...saved };
+    return { month: thisMonth, count: 0, resetDate: null };
 }
 
 async function incrementUsage() {
-    const usage = await getMonthlyUsage();
-    await chrome.storage.sync.set({
-        [MONETIZATION_CONFIG.usageKey]: {
-            month: usage.month,
-            count: usage.count + 1,
-            resetDate: usage.resetDate || null
-        }
-    });
+    // Pro unmetered
 }
 
-// ─────────────────────────────────────────────────────────────
-// CCR(커스텀 캐릭터 레퍼런스) 월 3회 카운터 — 5회 한도와 독립
-// ─────────────────────────────────────────────────────────────
 async function getCcrMonthlyUsage() {
-    const data = await chrome.storage.sync.get(MONETIZATION_CONFIG.ccrUsageKey);
-    const saved = data[MONETIZATION_CONFIG.ccrUsageKey];
     const thisMonth = new Date().toISOString().slice(0, 7);
-    if (!saved || saved.month !== thisMonth) {
-        const d = new Date();
-        d.setUTCMonth(d.getUTCMonth() + 1, 1);
-        const resetDate = d.toISOString().slice(0, 10);
-        return { month: thisMonth, count: 0, resetDate };
-    }
-    return { ...saved };
+    return { month: thisMonth, count: 0, resetDate: null };
 }
 
 async function incrementCcrUsage() {
-    const usage = await getCcrMonthlyUsage();
-    await chrome.storage.sync.set({
-        [MONETIZATION_CONFIG.ccrUsageKey]: {
-            month: usage.month,
-            count: usage.count + 1,
-            resetDate: usage.resetDate || null
-        }
-    });
+    // Pro unmetered
 }
 
 /**
- * CCR 접근 권한 체크 (유료 키 있으면 무제한, 없으면 월 3회)
- * @returns {{allowed: boolean, type: 'paid'|'sheet'|'free', remaining?: number}}
+ * CCR 접근 권한 체크 (Pro 무제한)
  */
 async function checkCcrAccess() {
-    // 유료 라이선스 있으면 무제한
-    const stored = await chrome.storage.local.get(MONETIZATION_CONFIG.licenseKey);
-    const savedKeyInfo = stored[MONETIZATION_CONFIG.licenseKey];
-    if (savedKeyInfo && savedKeyInfo.key && (savedKeyInfo.type === 'paid' || savedKeyInfo.type === 'sheet')) {
-        return { allowed: true, type: savedKeyInfo.type };
-    }
-    const usage = await getCcrMonthlyUsage();
-    if (usage.count < MONETIZATION_CONFIG.ccrFreeLimit) {
-        return { allowed: true, type: 'free', remaining: MONETIZATION_CONFIG.ccrFreeLimit - usage.count };
-    }
-    return { allowed: false, type: 'free' };
+    return { allowed: true, type: 'paid', remaining: 999999 };
 }
 
 /**
@@ -204,19 +162,8 @@ function _ccrSlotsHaveAnyImage() {
     return codes.some(c => refs[c] && refs[c].image);
 }
 
-// 2. 구글 시트 암호 (수강생 무제한 키) 검증
-// 취약점 2: 네트워크 오류 시 'network_error' 반환 → checkFactoryAccess에서 키 삭제하지 않음
 async function validateSheetKey(inputPw) {
-    try {
-        const url = `${MONETIZATION_CONFIG.sheetApiUrl}?pw=${encodeURIComponent(inputPw)}`;
-        // ★ v1.1.2: background service worker 경유 fetch (CORS 우회, host_permissions 추가 불필요)
-        const resp = await chrome.runtime.sendMessage({ type: 'FETCH_PROXY', url });
-        if (!resp?.ok) return 'network_error';
-        const data = JSON.parse(resp.body);
-        return data.success === true;
-    } catch (error) {
-        return 'network_error';
-    }
+    return true;
 }
 
 // 3. Flow Studio Pro — Lifetime Unlocked
@@ -270,7 +217,7 @@ async function exportBrandProfilesToFile() {
         type: 'DOWNLOAD_FILE',
         url: dataUrl,
         filename: filename,  // 서브폴더 없이 파일명만 → 메인 폴더 직속에 저장됨
-        folder: APP.settings?.downloadFolder || 'AI4Next'
+        folder: APP.settings?.downloadFolder || 'FlowStudioPro'
     });
 
     showToast(
@@ -317,7 +264,7 @@ async function importBrandProfilesFromFile(file) {
     }
 
     // 병합 전략: 동일 이름 처리 — 사용자에게 묻기
-    const msg = "Importing {n} brands.\\nOverwrite existing brands with the same name?\\n(Cancel to append with numeric suffix)"
+    const msg = "即将导入 {n} 个角色品牌库。\n是否覆盖同名的已有品牌？\n（点击取消将添加数字后缀新建）"
         .replace('{n}', valid.length)
         .replace(/\\n/g, '\n');
     const overwrite = confirm(msg);
@@ -887,8 +834,12 @@ async function initMainApp() {
         renderCharRefThumbnails(APP.characterRefAssets);
     }
 
-    // ★ PRO 2.0: 커스텀 캐릭터 레퍼런스 + 브랜드 프로필 초기화
-    await initCustomCharRefs();
+    // ★ NextGen: 统一资产管理中心 (CCR 角色 + SCR 场景)
+    if (typeof initAssetManager === 'function') {
+        await initAssetManager();
+    } else if (typeof initCustomCharRefs === 'function') {
+        await initCustomCharRefs();
+    }
 
     APP.p2iUseCustomCharRefs = false;
 
@@ -1348,13 +1299,6 @@ function updatePromptSeparatorUi() {
     if (shortcutKbd) shortcutKbd.textContent = getPromptSeparatorShortcutLabel();
 }
 
-function escapeHtml(value) {
-    return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
 
 const TEXTAREA_MIRROR_PROPS = [
     'boxSizing', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
@@ -1693,7 +1637,7 @@ function syncFlowSettingControls() {
         btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
     });
 
-    const currentImageModel = APP.settings.flowImageModel || 'Nano Banana 2 Lite';
+    const currentImageModel = APP.settings.flowImageModel || 'Nano Banana 2.1';
     const imageModelSelect = $('#imageModelSelect');
     if (imageModelSelect) imageModelSelect.value = currentImageModel;
 
@@ -2275,7 +2219,7 @@ function initInputHandlers() {
         clearImagesBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             const n = APP.imageFiles.length;
-            if (n > 0 && !confirm(`Delete all ${n} uploaded image${n === 1 ? '' : 's'}? This cannot be undone.`)) return;
+            if (n > 0 && !confirm(`是否确认删除全部 ${n} 张已上传图片？此操作无法撤销。`)) return;
             APP.imageFiles = [];
             APP.assetNames = {};
             closeAssetMentionMenu();
@@ -3512,17 +3456,21 @@ function initSettingsHandlers() {
         }
     });
 
-    // Default prompt
     $('#defaultPrompt')?.addEventListener('change', (e) => {
         APP.settings.defaultVideoPrompt = e.target.value || 'Dynamic action, Active camera angle';
         e.target.value = APP.settings.defaultVideoPrompt;
         persistSettingsChange();
     });
 
+    $('#settingAutoSyncNativeCharacters')?.addEventListener('change', (e) => {
+        APP.settings.autoSyncNativeCharacters = e.target.checked;
+        persistSettingsChange();
+    });
+
     // Style select is handled by initStyleGallery()
 
     $('#resetSettingsBtn')?.addEventListener('click', async () => {
-        if (confirm("Reset all settings?")) {
+        if (confirm("是否确认恢复所有默认设置？")) {
             await resetSettings();
             await loadSettings();
             applySettingsToUI();
@@ -3583,6 +3531,61 @@ function initControlHandlers() {
     $('#btn-script-save')?.addEventListener('click', async () => {
         await saveScriptDraft();
         showToast("剧本内容已保存", 'success');
+    });
+
+    // ── Table Importer Actions (Markdown & CSV) ──
+    const tableModal = $('#table-import-modal');
+    const tableInput = $('#tableImportInput');
+    const openTableModal = () => {
+        if (!tableModal) return;
+        tableModal.classList.remove('hidden');
+        tableModal.style.display = 'flex';
+        if (tableInput) { tableInput.value = ''; tableInput.focus(); }
+    };
+    const closeTableModal = () => {
+        if (!tableModal) return;
+        tableModal.classList.add('hidden');
+        tableModal.style.display = 'none';
+    };
+
+    $('#btn-import-table')?.addEventListener('click', openTableModal);
+    $('#closeTableImportModal')?.addEventListener('click', closeTableModal);
+    $('#cancelTableImport')?.addEventListener('click', closeTableModal);
+    tableModal?.addEventListener('click', (e) => {
+        if (e.target === tableModal) closeTableModal();
+    });
+
+    $('#confirmTableImport')?.addEventListener('click', () => {
+        const text = tableInput?.value?.trim();
+        if (!text) {
+            showToast("请输入或粘贴表格内容", 'warning');
+            return;
+        }
+        if (!window.tableImporter?.parseTableToPrompts) {
+            showToast("表格导入解析器未加载", 'error');
+            return;
+        }
+
+        const res = window.tableImporter.parseTableToPrompts(text);
+        if (!res.ok || !res.prompts.length) {
+            showToast(res.error || "表格解析失败，请检查格式", 'error');
+            return;
+        }
+
+        APP.prompts = res.prompts;
+        const promptLines = res.prompts.map(p => `[${p.number}] ${p.prompt}`).join('\n\n');
+        const generatedPromptsText = $('#generatedPromptsText');
+        if (generatedPromptsText) generatedPromptsText.value = promptLines;
+
+        renderQueueFromPrompts(res.prompts);
+        const generatedSection = $('#generatedPromptsSection');
+        if (generatedSection) generatedSection.classList.remove('hidden');
+        const countSpan = $('#generatedCount');
+        if (countSpan) countSpan.textContent = String(res.prompts.length);
+
+        closeTableModal();
+        showToast(`🎉 成功导入 ${res.count} 个分镜头！已就绪至编排清单`, 'success');
+        switchStudioStep(2);
     });
 
     $('#btn-prompt-splitter')?.addEventListener('click', insertPromptSeparator);
@@ -3660,7 +3663,7 @@ function initControlHandlers() {
                 : `# ${projectName} — original script (${ts})\n# split mode: ${splitMode}\n\n`;
             const filename = `${projectName}/script_${ts}.txt`;
             const dataUrl = 'data:text/plain;charset=utf-8;base64,' + btoa(unescape(encodeURIComponent(header + script)));
-            const folder = APP.settings?.downloadFolder || 'AI4Next';
+            const folder = APP.settings?.downloadFolder || 'FlowStudioPro';
             chrome.runtime.sendMessage({
                 type: 'DOWNLOAD_FILE',
                 url: dataUrl,
@@ -3687,17 +3690,18 @@ function initControlHandlers() {
         }
 
         const nationality = {
-            korean: 'Korean', japanese: 'Japanese', chinese: 'Chinese',
-            southeast_asian: 'Southeast Asian', western: 'American',
+            universal: 'Universal',
+            chinese: 'Chinese', western: 'American', japanese: 'Japanese',
+            korean: 'Korean', southeast_asian: 'Southeast Asian',
             indian: 'Indian', latin: 'Latin American', arab: 'Arab', black: 'Black'
-        }[APP.settings.nationality] || 'Korean';
+        }[APP.settings.nationality] || 'Universal';
         const userDirections = $('#userDirections')?.value?.trim() || '';
 
         const btn = $('#btn-generate-prompts');
         const originalText = btn.textContent;
         btn.disabled = true;
         btn.classList.add('loading');
-        btn.innerHTML = '<span class="spinner"></span>' + "GENERATING IMAGE PROMPTS...";
+        btn.innerHTML = '<span class="spinner"></span> ' + "✨ 正在生成 AI 分镜提示词...";
 
         APP.isGeneratingPrompts = true;  // ★ Gemini API 호출 시작 (모드 전환 차단)
 
@@ -3714,21 +3718,21 @@ function initControlHandlers() {
 
             const onBatchProgress = (phase, current, total, startNum, endNum, data) => {
                 if (phase === 'single') {
-                    const msg = ("GENERATING {count} PROMPTS...").replace('{count}', effectiveNumPrompts);
+                    const msg = ("正在生成 {count} 条提示词...").replace('{count}', effectiveNumPrompts);
                     btn.innerHTML = '<span class="spinner"></span> ' + msg;
                 } else if (phase === 'retry') {
-                    btn.innerHTML = '<span class="spinner"></span> ' + "RETRYING...";
+                    btn.innerHTML = '<span class="spinner"></span> ' + "🔄 正在重试...";
                 } else if (phase === 'fallback') {
-                    btn.innerHTML = '<span class="spinner"></span> ' + "SWITCHING TO SAFE MODE...";
+                    btn.innerHTML = '<span class="spinner"></span> ' + "🛡️ 切换到安全模式...";
                 } else if (phase === 'divide') {
-                    btn.innerHTML = '<span class="spinner"></span> ' + "Analyzing script...";
+                    btn.innerHTML = '<span class="spinner"></span> ' + "🔍 正在分析剧本并分镜...";
                 } else if (phase === 'split_decided') {
                     // ★ PRO 2.0: Gemini가 씬 개수 결정 — numPrompts UI 업데이트 + 토스트 + 유효개수 갱신
                     const n = current;
                     if (splitMode !== 'giseungjeongyeol' && typeof n === 'number' && n > 0) {
                         effectiveNumPrompts = n;  // 이후 배치 진행률에서 사용
                         updateNumPromptsUI(n);
-                        const tmpl = "AI analyzed the script and will generate {n} prompts";
+                        const tmpl = "AI 分析剧本完毕，将生成 {n} 个分镜提示词";
                         showToast(tmpl.replace('{n}', n), 'info', 4000);
                     }
                 } else if (phase === 'validation') {
@@ -3742,22 +3746,22 @@ function initControlHandlers() {
                     // ★ Validation 로그 — 개수 편차(MAJOR/CRITICAL) 있을 때만 기록
                     //   OK/MINOR 는 조용히 지나감 (사용자 노이즈 최소화)
                     if (sev === 'MAJOR' || sev === 'CRITICAL') {
-                        console.log(`⚠️ [${label} VALIDATION] 배치 ${batchN} 개수 편차 ${sev}: 예상 ${v.expectedCount}개 → 반환 ${v.matchCount}개`);
+                        console.log(`⚠️ [${label} VALIDATION] 批次 ${batchN} 数量偏差 ${sev}: 预期 ${v.expectedCount} 个 → 返回 ${v.matchCount} 个`);
                     }
                 } else if (phase === 'batch') {
-                    // 배치 시작: "배치 1/8 | 프롬프트 #1~25 생성 중"
+                    // 批次开始
                     const msg = total > 1
-                        ? ("BATCH {current}/{total} | GENERATING #{start}~{end}...")
+                        ? ("批次 {current}/{total} | 正在生成 #{start}~{end}...")
                             .replace('{current}', current)
                             .replace('{total}', total)
                             .replace('{start}', startNum || '?')
                             .replace('{end}', endNum || '?')
-                        : ("GENERATING {count} PROMPTS...").replace('{count}', effectiveNumPrompts);
+                        : ("正在生成 {count} 条提示词...").replace('{count}', effectiveNumPrompts);
                     btn.innerHTML = '<span class="spinner"></span> ' + msg;
                 } else if (phase === 'batch_done') {
-                    // 배치 완료: "배치 1/8 완료 ✓ | 25/200개 완료"
-                    const done = endNum || 0;  // 누적 완료 프롬프트 수
-                    const msg = ("BATCH {current}/{total} DONE ✓ | {done}/{totalPrompts}")
+                    // 批次完成
+                    const done = endNum || 0;
+                    const msg = ("批次 {current}/{total} 完成 ✓ | 已完成 {done}/{totalPrompts}")
                         .replace('{current}', current)
                         .replace('{total}', total)
                         .replace('{done}', done)
@@ -3784,11 +3788,11 @@ function initControlHandlers() {
                     APP.customCharRefs?.[c]?.image && !APP.customCharRefs?.[c]?.prompt?.trim()
                 );
                 if (imageOnlyCodes.length > 0) {
-                    const confirmMsg = "⚠️ Warning: the following slots have images but no prompts:\n{codes}\n\nGemini won't recognize these characters, and scene descriptions may not match the uploaded images.\n\nContinue anyway?"
+                    const confirmMsg = "⚠️ 提示：以下角色栏位有图片但缺少提示词：\n{codes}\n\nAI 可能无法识别这些角色外貌，生成的分镜可能与图片不一致。\n\n是否仍然继续？"
                         .replace('{codes}', imageOnlyCodes.join(', '));
                     const proceed = confirm(confirmMsg);
                     if (!proceed) {
-                        showToast('Prompt generation canceled. Please add prompts to the relevant slots.', 'info');
+                        showToast('已取消提示词生成，请为相应角色补充外貌描述。', 'info');
                         throw new Error('USER_ABORT_MISSING_PROMPT');
                     }
                 }
@@ -3817,15 +3821,15 @@ function initControlHandlers() {
             const characterRefs = result.characterRefs || [];
 
             if (!prompts || prompts.length === 0) {
-                throw new Error("Prompt generation failed. Solution: Check your script and try again, or enter a different Gemini API key in Settings.");
+                throw new Error("提示词生成失败。建议检查剧本内容后重试，或在设置中更换有效的 Gemini API Key。");
             }
 
             // ★ 배치 실패로 부분 완료 시: 생성된 프롬프트 표시 + 재개 버튼
             if (result.partial && result.resumeState) {
                 const is429 = result.failReason === '429_RATE_LIMIT';
                 const failMsg = is429
-                    ? `⚠️ Rate limit hit on batch ${result.failedBatch}/${result.totalBatches}. ${prompts.length}/${numPrompts} generated.\n→ Click [Resume Prompt Generation] shortly (if this recurs, try a different API key)`
-                    : `Batch ${result.failedBatch}/${result.totalBatches} failed. ${prompts.length}/${numPrompts} generated. Click [Resume Prompt Generation] for the rest`;
+                    ? `⚠️ 第 ${result.failedBatch}/${result.totalBatches} 批触发 API 速率限制 (429)。已生成 ${prompts.length}/${numPrompts} 个。\n→ 稍等片刻后点击【继续生成提示词】（若频繁出现请更换 API Key）`
+                    : `第 ${result.failedBatch}/${result.totalBatches} 批生成失败。已生成 ${prompts.length}/${numPrompts} 个。请点击【继续生成提示词】恢复`;
                 showToast(failMsg, 'warning', 8000);
 
                 APP.resumeState = result.resumeState;
@@ -3916,7 +3920,7 @@ function initControlHandlers() {
                 const btnGenRefs = $('#btnGenerateAllRefs');
                 if (btnGenRefs) {
                     btnGenRefs.disabled = false;
-                    btnGenRefs.innerHTML = "GENERATE CHARACTER REFERENCE IMAGES";
+                    btnGenRefs.innerHTML = "🎨 生成角色定妆图 (GENERATE REFS)";
                 }
                 if (APP.characterRefs?.length) {
                     APP.characterRefs.forEach(r => { if (r.status !== 'completed') r.status = 'pending'; });
@@ -4097,7 +4101,7 @@ function initControlHandlers() {
 
     // ★ Factory Video New Project Button
     $('#btn-factory-new-project')?.addEventListener('click', () => {
-        if (confirm("Start a new project? Current progress will be lost.")) {
+        if (confirm("是否确认开启新项目？当前进度将被清空。")) {
             resetProject();
         }
     });
@@ -4150,7 +4154,7 @@ function initControlHandlers() {
             type: 'DOWNLOAD_FILE',
             url: dataUrl,
             filename,
-            folder: APP.settings.downloadFolder || 'AI4Next'
+            folder: APP.settings.downloadFolder || 'FlowStudioPro'
         });
         showToast("Prompts downloaded", 'success');
     });
@@ -4239,7 +4243,7 @@ function initControlHandlers() {
             type: 'DOWNLOAD_FILE',
             url: dataUrl,
             filename,
-            folder: APP.settings.downloadFolder || 'AI4Next'
+            folder: APP.settings.downloadFolder || 'FlowStudioPro'
         });
         showToast("Prompts downloaded", 'success');
     });
@@ -4248,22 +4252,23 @@ function initControlHandlers() {
     // ★ VIDEO AUTO 버튼 핸들러 (동영상 프롬프트 생성부터 끝까지 자동)
     $('#btn-video-auto')?.addEventListener('click', async () => {
         if (APP.mode !== 'factory') {
-            showToast("VIDEO AUTO is only available in FACTORY mode", 'error');
+            showToast("全自动视频制片仅支持「全自动制片厂」模式", 'error');
             return;
         }
 
-        // 이미지 생성이 완료되었는지 확인
-        if (!APP.factory.imageGenerationComplete || APP.factory.batch1Images.length === 0) {
-            showToast("Please complete image generation first", 'error');
+        // 确保第 1 批分镜图片已就绪（支持自动从画板读取自愈）
+        const hasImages = await ensureBatch1ImagesAvailable();
+        if (!hasImages) {
+            showToast("请先完成分镜图生成（未检测到已生成的画面）", 'error');
             return;
         }
 
-        // ★ VIDEO AUTO 모드 활성화
+        // ★ VIDEO AUTO 模式激活
         APP.factory.isVideoAuto = true;
 
-        showToast("🎬 VIDEO AUTO started - auto progress from video prompts", 'success', 3000);
+        showToast("🎬 已启动全自动视频流水线，正在生成视频运镜提示词...", 'success', 3000);
 
-        // 동영상 프롬프트 생성 실행 (완료 후 자동으로 동영상 생성 시작)
+        // 执行视频提示词生成（完成后会自动触发视频批量生成）
         generateVideoPrompts();
     });
 
@@ -4313,6 +4318,12 @@ function renderCharacterRefs(characterRefs) {
         } else {
             btnContent = "REGEN";  // 완료 후: REGEN 텍스트만 표시
         }
+        const isSyncing = !!ref.isSyncingFlow;
+        const isSynced = !!ref.flowSynced;
+        let syncBtnText = '🌟 进角色库';
+        if (isSyncing) syncBtnText = '<span class="spinner spinner-dark"></span>';
+        else if (isSynced) syncBtnText = '✓ 角色库';
+
         html += `
             <div class="character-card" data-code="${ref.code}">
                 <div class="character-info">
@@ -4321,8 +4332,12 @@ function renderCharacterRefs(characterRefs) {
                     <span class="character-desc">${ref.refSheetPrompt || ref.prompt || ref.description || ''}</span>
                 </div>
                 <div class="character-card-actions">
-                    <button class="btn-copy-char-ref" data-code="${ref.code}" title="${"COPY"}">
-                        ${"COPY"}
+                    <button class="btn-copy-char-ref" data-code="${ref.code}" title="复制提示词">
+                        复制
+                    </button>
+                    <button class="btn-sync-flow-char" data-code="${ref.code}" title="${isSynced ? '已录入Flow左侧原生角色库' : '将该角色录入Flow左侧原生角色库'}"
+                            ${isSyncing || APP.isGeneratingRefs ? 'disabled' : ''}>
+                        ${syncBtnText}
                     </button>
                     <button class="btn-regenerate" data-code="${ref.code}"
                             ${APP.isGeneratingRefs || isGenerating ? 'disabled' : ''}>
@@ -4335,6 +4350,22 @@ function renderCharacterRefs(characterRefs) {
 
     container.innerHTML = html;
     section.classList.remove('hidden');
+
+    const syncAllBtn = $('#btnSyncAllFlowChars');
+    if (syncAllBtn) {
+        syncAllBtn.classList.remove('hidden');
+        if (!syncAllBtn._bound) {
+            syncAllBtn._bound = true;
+            syncAllBtn.addEventListener('click', () => syncAllCharactersToFlow());
+        }
+    }
+
+    container.querySelectorAll('.btn-sync-flow-char').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const code = btn.dataset.code;
+            if (code && !btn.disabled) syncSingleCharacterToFlow(code);
+        });
+    });
 
     container.querySelectorAll('.btn-regenerate').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -4359,6 +4390,83 @@ function renderCharacterRefs(characterRefs) {
             });
         });
     });
+}
+
+async function getActiveFlowTab() {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs[0]?.url?.includes('flow.google.com')) return tabs[0];
+    const flowTabs = await chrome.tabs.query({ url: '*://flow.google.com/*' });
+    return flowTabs[0] || tabs[0] || null;
+}
+
+async function syncSingleCharacterToFlow(code) {
+    const ref = APP.characterRefs?.find(r => r.code === code);
+    if (!ref) {
+        showToast('未找到该角色数据', 'error');
+        return;
+    }
+
+    const tab = await getActiveFlowTab();
+    if (!tab?.id) {
+        showToast('请先打开 Google Flow 项目画板页面', 'error');
+        return;
+    }
+
+    ref.isSyncingFlow = true;
+    renderCharacterRefs(APP.characterRefs);
+    showToast(`正在将角色 [${ref.name || ref.code}] 注册到 Flow 原生角色库...`, 'info', 4000);
+
+    try {
+        const resp = await chrome.tabs.sendMessage(tab.id, {
+            type: 'SYNC_CHARACTER_TO_FLOW',
+            character: {
+                code: ref.code,
+                name: ref.name || ref.code,
+                prompt: ref.refSheetPrompt || ref.prompt || ''
+            }
+        });
+
+        ref.isSyncingFlow = false;
+        if (resp && resp.success) {
+            ref.flowSynced = true;
+            renderCharacterRefs(APP.characterRefs);
+            showToast(`✅ [${ref.name || ref.code}] 已成功录入 Flow 左侧角色库！`, 'success', 5000);
+        } else {
+            renderCharacterRefs(APP.characterRefs);
+            showToast(`❌ 同步失败: ${resp?.error || 'Flow 页面无响应'}`, 'error', 5000);
+        }
+    } catch (e) {
+        ref.isSyncingFlow = false;
+        renderCharacterRefs(APP.characterRefs);
+        showToast(`❌ 同步失败: ${e.message}`, 'error', 5000);
+    }
+}
+
+async function syncAllCharactersToFlow() {
+    if (!APP.characterRefs || APP.characterRefs.length === 0) {
+        showToast('当前没有角色可供同步', 'warning');
+        return;
+    }
+
+    const syncAllBtn = $('#btnSyncAllFlowChars');
+    if (syncAllBtn) {
+        syncAllBtn.disabled = true;
+        syncAllBtn.innerHTML = '<span class="spinner spinner-dark"></span> 正在同步角色库...';
+    }
+
+    showToast(`开始将 ${APP.characterRefs.length} 个角色同步至 Flow 原生角色库...`, 'info', 4000);
+    let successCount = 0;
+    for (const ref of APP.characterRefs) {
+        await syncSingleCharacterToFlow(ref.code);
+        if (ref.flowSynced) successCount++;
+        await new Promise(r => setTimeout(r, 1500));
+    }
+
+    if (syncAllBtn) {
+        syncAllBtn.disabled = false;
+        syncAllBtn.innerHTML = '🌟 全部注册到Flow角色库';
+    }
+    showToast(`角色库同步完成: 成功 ${successCount}/${APP.characterRefs.length}`, successCount > 0 ? 'success' : 'warning', 5000);
 }
 
 /** flow-content에서 이미 base64로 변환된 이미지 저장 — fetch 불필요 (CORS/URL만료 리스크 제거) */
@@ -4436,7 +4544,7 @@ async function saveCharRefFromBase64(characterRefsArray, base64Images, opts = {}
         // ★ PRO 2.0: REGEN 성공 시 새 이미지를 프로젝트 폴더에 다운로드 (방어적)
         try {
             const projectName = APP.factory?.projectName || $('#controlProjectName')?.value?.trim() || 'my_project';
-            const downloadFolder = APP.settings?.downloadFolder || 'AI4Next';
+            const downloadFolder = APP.settings?.downloadFolder || 'FlowStudioPro';
             const downloadFilename = `${projectName}/${filename}`;
             chrome.runtime.sendMessage({
                 type: 'DOWNLOAD_FILE',
@@ -4795,7 +4903,7 @@ function handleEditVideoPrompts() {
         if (parseAndApplyVideoPromptsFromText(text)) {
             renderVideoPromptList();
             updateGeneratedVideoPromptsText();
-            showToast("Saved", 'success');
+            showToast("已保存", 'success');
         }
         modal.remove();
     });
@@ -4902,7 +5010,7 @@ async function handleGenerateAllRefs() {
 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!isFlowTabUrl(tab?.url)) {
-        showToast("Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", 'error');
+        showToast("请先在浏览器标签页中打开 Google Flow (flow.google.com)。", 'error');
         await checkFlowTabAndShowModal();
         return;
     }
@@ -4932,7 +5040,7 @@ async function handleGenerateAllRefs() {
             // ★ PRO 2.0: 사용자 업로드 이미지도 다운로드 폴더에 저장
             //    (서브폴더 없이 프로젝트 루트에 _custom_ 접미사로 저장)
             const projectName = $('#controlProjectName')?.value?.trim() || 'my_project';
-            const downloadFolder = APP.settings.downloadFolder || 'AI4Next';
+            const downloadFolder = APP.settings.downloadFolder || 'FlowStudioPro';
             customCodes.forEach(code => {
                 const slot = APP.customCharRefs[code];
                 if (!slot?.image) return;
@@ -4971,11 +5079,11 @@ async function handleGenerateAllRefs() {
 
     if (refsToGenerate.length === 0) {
         // 모든 캐릭터가 사용자 업로드로 완료됨 → Flow 호출 스킵
-        showToast('✓ All characters covered by user uploads — generation skipped', 'success');
+        showToast('✓ 所有角色均已由用户上传覆盖 — 跳过自动生成', 'success');
         APP.isGeneratingRefs = false;
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = "GENERATE CHARACTER REFERENCE IMAGES";
+            btn.innerHTML = "🎨 生成角色定妆图 (GENERATE REFS)";
         }
         renderCharacterRefs(APP.characterRefs);
         renderCharRefThumbnails(APP.characterRefAssets);
@@ -5014,7 +5122,7 @@ async function handleGenerateAllRefs() {
         mode: 'scriptToImage',
         aspectRatio,
         images: [],
-        outputCount: 2,
+        outputCount: 1,
         type: 'characterRef',
         code: ref.code,
         name: ref.name || ref.code || '',
@@ -5027,7 +5135,7 @@ async function handleGenerateAllRefs() {
     const projectName = $('#controlProjectName')?.value?.trim() || 'my_project';
     chrome.runtime.sendMessage({
         type: 'SETUP_DOWNLOAD',
-        folder: APP.settings.downloadFolder || 'AI4Next',
+        folder: APP.settings.downloadFolder || 'FlowStudioPro',
         subfolder: projectName
     });
 
@@ -5059,7 +5167,7 @@ async function handleGenerateAllRefs() {
             const btnGen = $('#btnGenerateAllRefs');
             if (btnGen) {
                 btnGen.disabled = false;
-                btnGen.innerHTML = "GENERATE CHARACTER REFERENCE IMAGES";
+                btnGen.innerHTML = "🎨 生成角色定妆图 (GENERATE REFS)";
             }
         }, CHAR_REF_TIMEOUT_MS);
         APP.factory.charRefGenerationTimeoutId = charRefTimeoutId;
@@ -5084,7 +5192,7 @@ async function handleGenerateAllRefs() {
         if (stopBtn) stopBtn.classList.add('hidden');
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = "GENERATE CHARACTER REFERENCE IMAGES";
+            btn.innerHTML = "🎨 生成角色定妆图 (GENERATE REFS)";
         }
     }
 }
@@ -5116,8 +5224,8 @@ async function handleStopCharRefGen() {
         btnGen.disabled = false;
         const hasGen = APP.characterRefs?.some(r => r.status === 'completed');
         btnGen.innerHTML = hasGen
-            ? `🔄 ${"REGENERATE ALL CHARACTER REFERENCES"}`
-            : "GENERATE CHARACTER REFERENCE IMAGES";
+            ? "🔄 重新生成全部角色定妆图"
+            : "🎨 生成角色定妆图 (GENERATE REFS)";
     }
     $('#btnStopCharRefGen')?.classList.add('hidden');
 
@@ -5129,7 +5237,7 @@ async function handleStopCharRefGen() {
         }
     } catch (_) {}
 
-    showToast("⏹ Character reference generation stopped", 'info');
+    showToast("⏹ 角色定妆图生成已停止", 'info');
 }
 
 async function regenerateSingleCharacter(code) {
@@ -5158,7 +5266,7 @@ async function regenerateSingleCharacter(code) {
 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!isFlowTabUrl(tab?.url)) {
-        showToast("Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", 'error');
+        showToast("请先在浏览器标签页中打开 Google Flow (flow.google.com)。", 'error');
         await checkFlowTabAndShowModal();
         ref.status = 'completed';
         renderCharacterRefs(APP.characterRefs);
@@ -5181,7 +5289,7 @@ async function regenerateSingleCharacter(code) {
         mode: 'scriptToImage',
         aspectRatio,
         images: [],
-        outputCount: 2,
+        outputCount: 1,
         type: 'characterRef',
         code: ref.code,
         name: ref.name || ref.code || '',
@@ -6276,11 +6384,11 @@ async function startGeneration(isRetry = false) {
         const btnStart = $('#btn-factory-start');
         const btnAuto = $('#btn-factory-auto');
         if (btnStart) {
-            btnStart.textContent = "▶ START IMAGE";
+            btnStart.textContent = "▶ 开始生图 (START IMAGE)";
             btnStart.classList.remove('btn-resume');
         }
         if (btnAuto) {
-            btnAuto.textContent = "▶▶ AUTO GENERATION";
+            btnAuto.textContent = "▶▶ 全自动制片 (AUTO)";
         }
     }
 
@@ -6356,7 +6464,7 @@ async function startGeneration(isRetry = false) {
 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!isFlowTabUrl(tab?.url)) {
-        showToast("Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", 'error');
+        showToast("请先在浏览器标签页中打开 Google Flow (flow.google.com)。", 'error');
         await checkFlowTabAndShowModal();  // Flow 열어주세요 안내 모달 표시
         return;
     }
@@ -6434,7 +6542,7 @@ async function startGeneration(isRetry = false) {
 
     chrome.runtime.sendMessage({
         type: 'SETUP_DOWNLOAD',
-        folder: APP.settings.downloadFolder || 'AI4Next',
+        folder: APP.settings.downloadFolder || 'FlowStudioPro',
         subfolder: projectName
     });
 
@@ -6644,7 +6752,7 @@ async function sendPayloadsToContentScript(tab, payloads, isRetry = false, skipN
         if (!isCurrentProject) {
             const navigated = await navigateToFlowHomeAndWait(tab);
             if (!navigated) {
-                throw new Error("Content Script injection failed. Please refresh the Flow page (flow.google.com).");
+                throw new Error("自动化脚本注入失败，请刷新 Flow 页面 (flow.google.com) 后重试。");
             }
             updatedTab = await chrome.tabs.get(tab.id);
         } else {
@@ -6730,7 +6838,7 @@ async function sendPayloadsToContentScript(tab, payloads, isRetry = false, skipN
 
     const loaded = await ensureContentScriptLoaded(updatedTab);
     if (!loaded) {
-        throw new Error("Content Script injection failed. Please refresh the Flow page (flow.google.com).");
+        throw new Error("自动化脚本注入失败，请刷新 Flow 页面 (flow.google.com) 后重试。");
     }
 
     // ★ v1.1.3 revert (커밋 de0435d 무효화):
@@ -6787,7 +6895,7 @@ function pauseGeneration() {
         btn.classList.add('btn-primary');
     }
     showQueue();
-    showToast("Paused - mode switching allowed", 'info');
+    showToast("已暂停 — 可切换模式或调整配置", 'info');
 }
 
 async function resumeGeneration() {
@@ -6812,7 +6920,7 @@ async function resumeGeneration() {
     // ★ 핵심 수정: 새 탭에서는 content script의 pausedState가 없으므로 재시작 필요
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) {
-        showToast("Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", 'error');
+        showToast("请先在浏览器标签页中打开 Google Flow (flow.google.com)。", 'error');
         return;
     }
 
@@ -6828,15 +6936,15 @@ async function resumeGeneration() {
             const resumeData = await chrome.storage.local.get('videoPipelineResume').then(r => r?.videoPipelineResume);
             if (resumeData?.hadSubmitted === false) {
                 const res = await chrome.runtime.sendMessage({ type: 'RELOAD_AND_RESUME_VIDEO', tabId: tab.id });
-                if (res?.success) showToast("Resumed - auto progress continues", 'success');
-                else showToast("Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", 'error');
+                if (res?.success) showToast("已继续 — 自动化生成恢复运行", 'success');
+                else showToast("请先在浏览器标签页中打开 Google Flow (flow.google.com)。", 'error');
                 return;
             }
             // ★ 수동 일시정지: content script가 PAUSED 상태면 RESUME_GENERATION만 전송 (화면 초기화 없음)
             try {
                 const response = await chrome.tabs.sendMessage(tab.id, { type: 'RESUME_GENERATION' });
                 if (response?.success) {
-                    showToast("Resumed - auto progress continues", 'success');
+                    showToast("已继续 — 自动化生成恢复运行", 'success');
                     return;
                 }
             } catch (e) { /* content script 미응답 → 크레딧 소진 경로 */ }
@@ -6844,9 +6952,9 @@ async function resumeGeneration() {
             // ★ 크레딧 소진 재개: 계정 변경 등으로 content script 상태 없음 → 리로드 후 RESUME_VIDEO_PIPELINE
             const res = await chrome.runtime.sendMessage({ type: 'RELOAD_AND_RESUME_VIDEO', tabId: tab.id });
             if (res?.success) {
-                showToast("Resumed - auto progress continues", 'success');
+                showToast("已继续 — 自动化生成恢复运行", 'success');
             } else {
-                showToast("Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", 'error');
+                showToast("请先在浏览器标签页中打开 Google Flow (flow.google.com)。", 'error');
             }
             return;
         }
@@ -6854,9 +6962,9 @@ async function resumeGeneration() {
         // URL이 Flow가 아니면 이동 후 FLOW_CONTENT_READY 시 재전송
         const res = await chrome.runtime.sendMessage({ type: 'NAVIGATE_AND_RESUME_VIDEO', tabId: tab.id });
         if (res?.success) {
-            showToast("Resumed - auto progress continues", 'success');
+            showToast("已继续 — 自动化生成恢复运行", 'success');
         } else {
-            showToast("Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", 'error');
+            showToast("请先在浏览器标签页中打开 Google Flow (flow.google.com)。", 'error');
         }
         return;
     }
@@ -6869,10 +6977,10 @@ async function resumeGeneration() {
         const isFlowTool = isFlowTabUrl(url);
         if (!isFlowTool) {
             const res = await chrome.runtime.sendMessage({ type: 'NAVIGATE_AND_RESUME_VIDEO', tabId: tab.id });
-            showToast(res?.success ? "Resumed - auto progress continues" : "Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", res?.success ? 'success' : 'error');
+            showToast(res?.success ? "已继续 — 自动化生成恢复运行" : "请先在浏览器标签页中打开 Google Flow (flow.google.com)。", res?.success ? 'success' : 'error');
         } else {
             const res = await chrome.runtime.sendMessage({ type: 'RELOAD_AND_RESUME_VIDEO', tabId: tab.id });
-            showToast(res?.success ? "Resumed - auto progress continues" : "Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", res?.success ? 'success' : 'error');
+            showToast(res?.success ? "已继续 — 自动化生成恢复运行" : "请先在浏览器标签页中打开 Google Flow (flow.google.com)。", res?.success ? 'success' : 'error');
         }
         return;
     }
@@ -6888,7 +6996,7 @@ async function resumeGeneration() {
                 APP.flowUi = APP.flowUi || {};
                 APP.flowUi.lastProgressSeq = -1;
             }
-            showToast("Resumed - auto progress continues", 'success');
+            showToast("已继续 — 自动化生成恢复运行", 'success');
             return;
         }
     } catch (e) {
@@ -6898,7 +7006,7 @@ async function resumeGeneration() {
 
     await new Promise(r => setTimeout(r, 300));
 
-    showToast("Resumed - restarting from beginning", 'success');
+    showToast("已恢复 — 正在从头重新开始", 'success');
     startGeneration(true);  // true = 이어서 시작
 }
 
@@ -6994,7 +7102,7 @@ function pauseFactoryVideoGeneration() {
         btn.classList.remove('btn-secondary');
         btn.classList.add('btn-primary');
     }
-    showToast("Paused - mode switching allowed", 'info');
+    showToast("已暂停 — 可切换模式或调整配置", 'info');
 }
 
 // ★ Factory Video 전용 재개
@@ -7022,7 +7130,7 @@ async function resumeFactoryVideoGeneration() {
     // popup.js에서 직접 재시작 로직 실행
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) {
-        showToast("Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", 'error');
+        showToast("请先在浏览器标签页中打开 Google Flow (flow.google.com)。", 'error');
         return;
     }
 
@@ -7034,7 +7142,7 @@ async function resumeFactoryVideoGeneration() {
             if (response) {
                 APP.flowUi = APP.flowUi || {};
                 APP.flowUi.lastProgressSeq = -1;
-                showToast("Resumed - auto progress continues", 'success');
+                showToast("已继续 — 自动化生成恢复运行", 'success');
                 return;
             }
         }
@@ -7054,15 +7162,15 @@ async function resumeFactoryVideoGeneration() {
         if (flowTab) {
             await chrome.tabs.update(flowTab.id, { active: true });
             const res = await chrome.runtime.sendMessage({ type: 'FACTORY_RELOAD_AND_RESUME', tabId: flowTab.id });
-            showToast(res?.success ? "Resumed - auto progress continues" : "Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", res?.success ? 'success' : 'error');
+            showToast(res?.success ? "已继续 — 自动化生成恢复运行" : "请先在浏览器标签页中打开 Google Flow (flow.google.com)。", res?.success ? 'success' : 'error');
         } else {
             const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
             if (!activeTab) {
-                showToast("Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", 'error');
+                showToast("请先在浏览器标签页中打开 Google Flow (flow.google.com)。", 'error');
                 return;
             }
             const res = await chrome.runtime.sendMessage({ type: 'FACTORY_NAVIGATE_AND_RESUME', tabId: activeTab.id });
-            showToast(res?.success ? "Resumed - auto progress continues" : "Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", res?.success ? 'success' : 'error');
+            showToast(res?.success ? "已继续 — 自动化生成恢复运行" : "请先在浏览器标签页中打开 Google Flow (flow.google.com)。", res?.success ? 'success' : 'error');
         }
         return;
     }
@@ -7086,7 +7194,7 @@ async function resumeFactoryVideoGeneration() {
         if (factoryPauseBtn) factoryPauseBtn.disabled = true;
         showVideoCompletion();  // 큐 기반
     } else {
-        showToast("No videos to generate. Solution: Click 'Generate video prompts' first, then 'Start video generation'.", 'error');
+        showToast("没有可生成的视频任务。请先点击【生成视频提示词】，再点击【开始生成视频】。", 'error');
     }
     } finally {
         APP.factory._resumeInProgress = false;
@@ -7140,7 +7248,7 @@ function stopFactoryVideoGeneration() {
         showToast("Stopped - restart to continue from pending items"
             .replace('{completed}', completedCount).replace('{pending}', pendingCount + failedCount), 'info');
     } else {
-        showToast("GENERATION STOPPED");
+        showToast("已停止生成");
     }
 
 }
@@ -7343,15 +7451,15 @@ function retryFailed() {
     if (failedSceneItems.length === 0) {
         const isVideo = APP.mode === 'textToVideo' || APP.mode === 'imageToVideo';
         showToast(isVideo
-            ? "No failed videos to regenerate. Solution: Run video generation first; then you can retry failed items only."
-            : "No failed images to regenerate. Solution: Run image generation first; then you can retry failed items only.", 'info');
+            ? "没有失败的视频项可重试。请先运行视频生成，出现失败项后可单独重试。"
+            : "没有失败的图片项可重试。请先运行图片生成，出现失败项后可单独重试。", 'info');
         return;
     }
 
     const retryBtn = $('#btn-retry-failed');
     if (retryBtn) {
         retryBtn.disabled = true;
-        retryBtn.querySelector('span').textContent = "REGENERATING...";
+        retryBtn.querySelector('span').textContent = "🔄 正在重试失败项...";
     }
 
     // ★ done은 유지, fail만 ready로 → 큐 재구성 시 done 먼저 필터(실패→ready 변경 전)
@@ -7438,7 +7546,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const btnGenRefs = $('#btnGenerateAllRefs');
         if (btnGenRefs) {
             btnGenRefs.disabled = false;
-            btnGenRefs.innerHTML = `🔄 ${"REGENERATE ALL CHARACTER REFERENCES"}`;
+            btnGenRefs.innerHTML = "🔄 重新生成全部角色定妆图";
         }
         const stopBtn = $('#btnStopCharRefGen');
         if (stopBtn) stopBtn.classList.add('hidden');
@@ -7647,14 +7755,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         const btnGenRefs = $('#btnGenerateAllRefs');
                         if (btnGenRefs) {
                             btnGenRefs.disabled = false;
-                            btnGenRefs.innerHTML = `🔄 ${"REGENERATE ALL CHARACTER REFERENCES"}`;
+                            btnGenRefs.innerHTML = "🔄 重新生成全部角色定妆图";
                         }
                         const completionMsg = $('#charRefCompletionMsg');
                         const n = APP.characterRefs.filter(r => r.status === 'completed').length;
                         const total = APP.characterRefs.length;
                         if (completionMsg) {
                             completionMsg.querySelector('.charref-completion-text').textContent =
-                                `${"CHARACTER REFERENCE IMAGES GENERATED!"} (${n}/${total})`;
+                                `角色定妆图生成完毕！ (${n}/${total})`;
                             completionMsg.classList.remove('hidden');
                         }
                         updateFactoryPhaseStatus('char_ref_done', n);
@@ -7674,13 +7782,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         const btnGenRefs = $('#btnGenerateAllRefs');
                         if (btnGenRefs) {
                             btnGenRefs.disabled = false;
-                            btnGenRefs.innerHTML = "GENERATE CHARACTER REFERENCE IMAGES";
+                            btnGenRefs.innerHTML = "🎨 生成角色定妆图 (GENERATE REFS)";
                         }
                         const completionMsg = $('#charRefCompletionMsg');
                         const total = APP.characterRefs?.length || 0;
                         if (completionMsg && total > 0) {
                             completionMsg.querySelector('.charref-completion-text').textContent =
-                                `${"CHARACTER REFERENCE IMAGES GENERATED!"} (0/${total})`;
+                                `角色定妆图生成完毕！ (0/${total})`;
                             completionMsg.classList.remove('hidden');
                         }
                         updateFactoryPhaseStatus('char_ref_done', 0);
@@ -7715,7 +7823,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     const btnGenRefs = $('#btnGenerateAllRefs');
                     if (btnGenRefs) {
                         btnGenRefs.disabled = false;
-                        btnGenRefs.innerHTML = "GENERATE CHARACTER REFERENCE IMAGES";
+                        btnGenRefs.innerHTML = "🎨 生成角色定妆图 (GENERATE REFS)";
                     }
                 }
             } finally {
@@ -7925,7 +8033,7 @@ function handleProgress(data) {
             renderCharacterRefs(APP.characterRefs);
         }
         if (btn) {
-            btn.innerHTML = '<span class="spinner"></span> ' + "GENERATING CHARACTER REFERENCES";
+            btn.innerHTML = '<span class="spinner"></span> 正在生成角色定妆图...';
         }
         return;
     }
@@ -8044,14 +8152,14 @@ function handleComplete(data) {
         const btn = $('#btnGenerateAllRefs');
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = `🔄 ${"REGENERATE ALL CHARACTER REFERENCES"}`;
+            btn.innerHTML = "🔄 重新生成全部角色定妆图";
         }
 
         // 캐릭터 레퍼런스 완료 메시지를 charRef 섹션 내에 표시
         const completionMsg = $('#charRefCompletionMsg');
         if (completionMsg) {
             completionMsg.querySelector('.charref-completion-text').textContent =
-                `${"CHARACTER REFERENCE IMAGES GENERATED!"} (${totalSuccess}/${totalSuccess + totalFail})`;
+                `角色定妆图生成完毕！ (${totalSuccess}/${totalSuccess + totalFail})`;
             completionMsg.classList.remove('hidden');
         }
         updateFactoryPhaseStatus('char_ref_done', APP.characterRefs?.length ?? 0);
@@ -8061,6 +8169,14 @@ function handleComplete(data) {
             if (q.status !== 'ready') q.status = 'ready';
         });
         showQueue();
+
+        if (APP.settings.autoSyncNativeCharacters !== false && APP.characterRefs?.length > 0) {
+            setTimeout(() => {
+                syncAllCharactersToFlow().catch(err => {
+                    console.warn('[CHAR-SYNC] auto-sync failed:', err);
+                });
+            }, 1500);
+        }
 
         return;
     }
@@ -8140,10 +8256,10 @@ function handleComplete(data) {
                 : "ALL IMAGES GENERATED!";
         } else if (actualSuccessCount === 0) {
             iconEl.textContent = '❌';
-            titleEl.textContent = "GENERATION FAILED";
+            titleEl.textContent = "❌ 生成失败 (GENERATION FAILED)";
         } else {
             iconEl.textContent = '⚠️';
-            titleEl.textContent = "PARTIALLY COMPLETED";
+            titleEl.textContent = "⚠️ 部分完成 (PARTIALLY COMPLETED)";
         }
     }
 
@@ -8184,7 +8300,7 @@ function handleComplete(data) {
     if ($('#progressFill')) $('#progressFill').style.width = `${pctComplete}%`;
     if ($('#progressText')) {
         $('#progressText').textContent = finalFail > 0
-            ? `${finalSuccess} / ${totalItems} ${("(FAILED {count})").replace('{count}', finalFail)}`
+            ? `${finalSuccess} / ${totalItems} (失败 ${finalFail})`
             : `${finalSuccess} / ${totalItems}`;
     }
 
@@ -8194,8 +8310,8 @@ function handleComplete(data) {
             retryBtn.classList.remove('hidden');
             retryBtn.disabled = false;
             retryBtn.querySelector('span').textContent = isVideo
-                ? "REGENERATE FAILED VIDEOS"
-                : "REGENERATE FAILED IMAGES";
+                ? "🔄 重试失败的视频"
+                : "🔄 重试失败的图片";
         } else {
             retryBtn.classList.add('hidden');
         }
@@ -8282,8 +8398,8 @@ function addLogItem(data) {
     const isVideoMode = APP.mode === 'textToVideo' || APP.mode === 'imageToVideo' ||
         (APP.mode === 'factory' && APP.factory.isVideoPhase);
     const generatingText = isVideoMode
-        ? "generating video"
-        : "generating image";
+        ? "正在生成视频"
+        : "正在生成图片";
 
     if (status === 'completed' || status === 'error' || status === 'video_complete') {
         // ★ 이미 같은 idx의 completed/error 로그가 있으면 중복 추가 방지
@@ -8585,7 +8701,7 @@ async function processAndPreviewImage(file) {
         if (preview) { preview.src = APP.pendingCustomImage; preview.classList.remove('hidden'); }
         $('#uploadPlaceholder')?.classList.add('hidden');
         $('#imageUploadArea')?.classList.add('has-image');
-        showToast("Image added", 'success');
+        showToast("参考图已添加", 'success');
     } catch (err) {
         showToast(getCustomStyleError('imageError'), 'error');
     }
@@ -8610,7 +8726,7 @@ async function saveCustomStyleFromModal() {
                 styles[idx] = { ...styles[idx], name, prompt, imageData };
                 await saveCustomStyles(styles);
             }
-            showToast("Style updated", 'success');
+            showToast("风格已更新", 'success');
         } else {
             const newStyle = {
                 id: `custom_${Date.now()}`,
@@ -8620,7 +8736,7 @@ async function saveCustomStyleFromModal() {
                 createdAt: Date.now()
             };
             styles = await addCustomStyle(newStyle);
-            showToast("Style saved", 'success');
+            showToast("风格已保存", 'success');
         }
         APP.customStyles = styles;
         renderCustomStyleGallery();
@@ -8676,7 +8792,7 @@ function renderCustomStyleGallery() {
             if (styleSelect) styleSelect.value = id;
             if (controlSelect && Array.from(controlSelect.options).some(o => o.value === id)) controlSelect.value = id;
             updateControlStyleDisplay();
-            showToast("Style selected", 'success');
+            showToast("已应用选中的风格", 'success');
         };
         item.addEventListener('click', selectCustomStyle);
         activateOnKeyboard(item, selectCustomStyle);
@@ -8693,7 +8809,7 @@ function renderCustomStyleGallery() {
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
             const id = btn.dataset.deleteId;
-            const msg = "Delete this style?";
+            const msg = "是否确定删除该自定义风格？";
             if (!confirm(msg)) return;
             const styles = await loadCustomStyles();
             const filtered = styles.filter(s => s.id !== id);
@@ -8711,7 +8827,7 @@ function renderCustomStyleGallery() {
                 if (controlSelect) controlSelect.value = '';
                 updateControlStyleDisplay();
             }
-            showToast("Style deleted", 'success');
+            showToast("已删除风格", 'success');
         });
     });
 }
@@ -8906,12 +9022,13 @@ async function loadSettings() {
         openaiApiKey: '',
         openaiModel: 'deepseek-chat',
         openaiPreset: 'deepseek',
-        nationality: 'korean',
-        downloadFolder: 'AI4Next',
+        nationality: 'universal',
+        downloadFolder: 'FlowStudioPro',
         projectName: '',
         imageGenPrefix: '',
         aspectRatio: '16:9',
-        flowImageModel: 'Nano Banana 2 Lite',
+        flowImageModel: 'Nano Banana 2.1',
+        autoSyncNativeCharacters: true,
         flowVideoModel: 'Veo 3.1 Lite',
         videoResolution: '1K',
         videoDuration: '6s',
@@ -8937,7 +9054,7 @@ async function loadSettings() {
             APP.settings.downloadFolder = safeDownloadFolder(APP.settings.downloadFolder);
             APP.settings.selectedStyle = normalizeSelectedStyle(APP.settings.selectedStyle);
             if (!result.grokSettings?.downloadFolder || ['flow4next', 'FlowFactory'].includes(APP.settings.downloadFolder)) {
-                APP.settings.downloadFolder = 'AI4Next';
+                APP.settings.downloadFolder = 'FlowStudioPro';
             }
             // ★ v1.1.2: 이전 기본값 마이그레이션 — storage에 저장된 구 프리픽스 제거
             if (APP.settings.imageGenPrefix === 'Generate an image: ') {
@@ -8990,7 +9107,7 @@ async function resetSettings() {
 // Windows 예약 이름(nul, con, prn 등) 방지 — 다운로드 폴더명으로 사용 불가
 function safeDownloadFolder(v) {
     const raw = (v && typeof v === 'string') ? v.trim() : '';
-    return (/^(nul|con|prn|aux|com[1-9]|lpt[1-9])$/i.test(raw) || !raw) ? 'AI4Next' : raw;
+    return (/^(nul|con|prn|aux|com[1-9]|lpt[1-9])$/i.test(raw) || !raw) ? 'FlowStudioPro' : raw;
 }
 
 function applySettingsToUI() {
@@ -9024,7 +9141,7 @@ function applySettingsToUI() {
 
     // Nationality
     const natSelect = $('#nationalitySelect');
-    if (natSelect) natSelect.value = APP.settings.nationality || 'korean';
+    if (natSelect) natSelect.value = APP.settings.nationality || 'universal';
 
     // Download folder (기본 저장 폴더명만, Whisk와 동일) — nul 등 예약명 방지
     const dlFolder = $('#downloadFolder');
@@ -9080,6 +9197,9 @@ function applySettingsToUI() {
     const attachCheckbox = $('#attachStyleCheckbox');
     if (attachCheckbox) attachCheckbox.checked = !!APP.settings.attachStyleInTextToImage;
 
+    const autoSyncCheckbox = $('#settingAutoSyncNativeCharacters');
+    if (autoSyncCheckbox) autoSyncCheckbox.checked = APP.settings.autoSyncNativeCharacters !== false;
+
     // Mode card
     $$('.mode-card').forEach(c => {
         c.classList.toggle('active', c.dataset.mode === APP.mode);
@@ -9132,7 +9252,7 @@ function updateGeminiKeyStatus() {
         if (statusText) {
             statusText.innerHTML = hasKey
                 ? 'AI KEY REGISTERED <span style="color:#10b981">&#10003;</span>'
-                : 'REGISTER API KEY';
+                : '⚙️ 请配置 API Key';
         }
         return;
     }
@@ -9161,12 +9281,12 @@ function updateGeminiKeyStatus() {
                 ? "FREE KEY REGISTERED" + ' <span style="color:#10b981">&#10003;</span>'
                 : "PAID KEY REGISTERED" + ' <span style="color:#2563eb">&#10003;</span>';
         } else {
-            statusText.textContent = "REGISTER API KEY";
+            statusText.textContent = "⚙️ 请配置 API Key";
         }
     }
 
     const settingBtn = $('#geminiKeySettingBtn');
-    if (settingBtn) settingBtn.textContent = "API KEY SETTINGS";
+    if (settingBtn) settingBtn.textContent = "⚙️ API Key 设置";
 }
 
 /**
@@ -9393,7 +9513,7 @@ function showGeminiGuideModal() {
         //   잘못된 키면 실제 호출 시 getPromptErrorToast 의 API_KEY 분기가 안내함
         const _safeCharset = /^[A-Za-z0-9._\-\\]+$/;
         if (!val || val.length < 30 || !_safeCharset.test(val)) {
-            showToast("Invalid API Key (must start with AIza or AQ.)", 'error');
+            showToast("API Key 格式不正确（必须以 AIza 或 AQ 开头）", 'error');
             return;
         }
         APP.settings.geminiApiKey = val;
@@ -9402,7 +9522,7 @@ function showGeminiGuideModal() {
         updateGeminiKeyStatus();
         modal.remove();
         showGeminiGuideModal();
-        showToast("Free API Key registered", 'success');
+        showToast("已保存免费 API Key", 'success');
     });
     modal.querySelector('#gmFreeKeyDelete')?.addEventListener('click', () => {
         APP.settings.geminiApiKey = '';
@@ -9411,7 +9531,7 @@ function showGeminiGuideModal() {
         updateGeminiKeyStatus();
         modal.remove();
         showGeminiGuideModal();
-        showToast("Free API Key deleted");
+        showToast("已删除免费 API Key");
     });
 
     // ── 유료 키 등록/삭제 ──
@@ -9421,7 +9541,7 @@ function showGeminiGuideModal() {
         //   잘못된 키면 실제 호출 시 getPromptErrorToast 의 API_KEY 분기가 안내함
         const _safeCharset = /^[A-Za-z0-9._\-\\]+$/;
         if (!val || val.length < 30 || !_safeCharset.test(val)) {
-            showToast("Invalid API Key (must start with AIza or AQ.)", 'error');
+            showToast("API Key 格式不正确（必须以 AIza 或 AQ 开头）", 'error');
             return;
         }
         APP.settings.geminiApiKeyPaid = val;
@@ -9430,7 +9550,7 @@ function showGeminiGuideModal() {
         updateGeminiKeyStatus();
         modal.remove();
         showGeminiGuideModal();
-        showToast("Paid API Key registered", 'success');
+        showToast("已保存付费 API Key", 'success');
     });
     modal.querySelector('#gmPaidKeyDelete')?.addEventListener('click', () => {
         APP.settings.geminiApiKeyPaid = '';
@@ -9439,7 +9559,7 @@ function showGeminiGuideModal() {
         updateGeminiKeyStatus();
         modal.remove();
         showGeminiGuideModal();
-        showToast("Paid API Key deleted");
+        showToast("已删除付费 API Key");
     });
 }
 
@@ -9447,7 +9567,7 @@ function showGeminiGuideModal() {
 function getPromptErrorToast(err) {
     const msg = (err?.message || '').toLowerCase();
     const name = (err?.name || '').toLowerCase();
-    if (!msg && !name) return { message: "Prompt generation failed. Solution: Check your script and try again, or enter a different Gemini API key in Settings.", duration: 5000 };
+    if (!msg && !name) return { message: "提示词生成失败。建议检查剧本内容后重试，或在设置中更换有效的 Gemini API Key。", duration: 5000 };
     // ★ v1.1.7 (개선): GCP 'Generative Language API' 미활성화 / 차단 감지
     //   서버 응답: "403 - Requests to this API ... are blocked" / "API not enabled" / "service is disabled" 등
     //   유럽(EU) 지역 등에서 신형 키 발급 후 GCP 콘솔 활성화 필요한 케이스
@@ -9459,7 +9579,7 @@ function getPromptErrorToast(err) {
         /api.*not.?enabled|service.*disabled|service_disabled/i.test(msg) ||
         /requests to this api .*are blocked/i.test(msg)
     ) {
-        return { message: "⚠️ Key registered but Gemini API access denied. ① At console.cloud.google.com → API Library, enable 'Generative Language API'. ② Some regions (e.g., EU) may be restricted — try a different account.", duration: 10000 };
+        return { message: "⚠️ API Key 已配置但访问被拒绝。① 请前往 console.cloud.google.com → API Library 启用 'Generative Language API'。② 某些地区可能受限，可尝试切换节点或账号。", duration: 10000 };
     }
     // ★ v1.1.7: API 키 명시적 에러 우선 감지 — 서버가 키를 거부한 경우 사용자 안내
     //   400 API_KEY_INVALID / 401 Unauthorized / 403 PERMISSION_DENIED / API key not valid 등
@@ -9471,38 +9591,36 @@ function getPromptErrorToast(err) {
         msg.includes('unauthenticated') || msg.includes('unauthorized') ||
         /\b(400|401|403)\b.*(api.?key|auth|permission|denied)/i.test(msg)
     ) {
-        return { message: "⚠️ Please verify your API key is entered correctly. If using a new-format key (AQ.), the key may be invalid or lack permissions.", duration: 7000 };
+        return { message: "⚠️ 请检查 API Key 是否正确填写。若使用新格式密钥，请确认其具备相应访问权限。", duration: 7000 };
     }
-    // ★ 서버 과부하 먼저 감지 — 소진 오탐 방지. 다른 모델 선택 또는 재시도 유도
-    if (msg.includes('429_server_busy') || msg.includes('서버 일시 과부하') || /\b(503|500|502|504)\b.*(server|busy|unavailable|overload|내부 오류)/i.test(msg)) {
-        return { message: "⚠️ Gemini server temporarily overloaded. Select a different Gemini model or try again shortly.", duration: 7000 };
+    // 服务器过载
+    if (msg.includes('429_server_busy') || msg.includes('서버 일시 과부하') || msg.includes('过载') || /\b(503|500|502|504)\b.*(server|busy|unavailable|overload|过载|内部错误|내부 오류)/i.test(msg)) {
+        return { message: "⚠️ Gemini 服务器暂时过载。请尝试切换其他模型或稍后重试。", duration: 7000 };
     }
-    // 레이트리밋 — 키 소진 아님, 재시도 가능
-    if (msg.includes('429_rate_limit') || msg.includes('레이트리밋') || /rate.*limit/i.test(msg)) {
-        return { message: "⚠️ Gemini API per-minute rate limit. Please retry in 10-30 seconds.", duration: 7000 };
+    // 速率限制 (RPM)
+    if (msg.includes('429_rate_limit') || msg.includes('레이트리밋') || msg.includes('速率限制') || /rate.*limit/i.test(msg)) {
+        return { message: "⚠️ 触发 API 每分钟速率限制，请等待 10~30 秒后重试。", duration: 7000 };
     }
-    // 실제 쿼터 소진 — 키 교체 유도
-    if (msg.includes('429') || msg.includes('사용량이 초과') || msg.includes('무료 사용량') || msg.includes('quota exhausted')) {
-        return { message: "⚠️ API quota exhausted. Solution: Enter a different Gemini API key in Settings, or try again after 5pm KST (quota reset).", duration: 6000 };
+    // 额度耗尽
+    if (msg.includes('429') || msg.includes('使用量') || msg.includes('额度') || msg.includes('사용량이 초과') || msg.includes('무료 사용량') || msg.includes('quota exhausted')) {
+        return { message: "⚠️ API 免费额度已耗尽。请在设置中更换其他有效 Gemini API Key，或等待额度刷新。", duration: 6000 };
     }
-    if (msg.includes('시간 초과') || msg.includes('timeout') || name === 'aborterror') {
-        return { message: "⏱️ Response timeout (15 min). Solution: Split your script into shorter parts and reduce the number of prompts, then try again.", duration: 6000 };
+    if (msg.includes('超时') || msg.includes('시간 초과') || msg.includes('timeout') || name === 'aborterror') {
+        return { message: "⏱️ 请求响应超时。建议将剧本拆分成更短小段或减少单次生成的提示词数量后重试。", duration: 6000 };
     }
-    if (/token|토큰|max_tokens|resourceexhausted|context\s*length/i.test(msg)) {
-        return { message: "📝 Token limit exceeded. Solution: Shorten the script or lower 'Number of prompts to generate', then try again.", duration: 6000 };
+    if (/token|토큰|令牌|max_tokens|resourceexhausted|context\s*length/i.test(msg)) {
+        return { message: "📝 超过最大 Token 长度限制。请精简剧本或降低单次提示词生成数量后重试。", duration: 6000 };
     }
-    if (msg.includes('네트워크') || msg.includes('failed to fetch') || msg.includes('network')) {
-        return { message: "🌐 Network error. Solution: Check your internet connection and try again.", duration: 5000 };
+    if (msg.includes('网络') || msg.includes('네트워크') || msg.includes('failed to fetch') || msg.includes('network')) {
+        return { message: "🌐 网络连接错误。请检查您的网络连接或代理设置后重试。", duration: 5000 };
     }
-    if (msg.includes('안전') || msg.includes('safety') || msg.includes('filter')) {
-        return { message: "🛡️ Script flagged by safety filter. Solution: Edit sensitive content and try again.", duration: 5000 };
+    if (msg.includes('安全') || msg.includes('안전') || msg.includes('safety') || msg.includes('filter')) {
+        return { message: "🛡️ 内容触发了安全过滤器。请修改敏感内容后重试。", duration: 5000 };
     }
-    if (msg.includes('과부하') || msg.includes('503') || msg.includes('unavailable')) {
-        return { message: "🔄 Server temporarily overloaded. Solution: Wait 1–2 minutes and try again.", duration: 5000 };
+    if (msg.includes('过载') || msg.includes('과부하') || msg.includes('503') || msg.includes('unavailable')) {
+        return { message: "🔄 服务器暂时繁忙。请等待 1–2 分钟后重试。", duration: 5000 };
     }
-    // ★ v1.1.7: fall-through — 알려진 에러 카테고리에 안 잡히면 API 키 확인 유도
-    //   3차 폴백 관대 검증 통과 후 실제 API 호출 실패 시 가장 흔한 원인이 잘못된 키
-    return { message: "⚠️ Please verify your API key is entered correctly. If using a new-format key (AQ.), the key may be invalid or lack permissions.", duration: 6000 };
+    return { message: "⚠️ 请检查 API Key 是否正确输入，或网络代理是否正常连接。", duration: 6000 };
 }
 
 function showToast(message, type = '', duration = 3000) {
@@ -9680,6 +9798,76 @@ function createThumbnail(base64, maxSize = 150) {
 }
 
 /**
+ * 确保第1批次分镜图片已就绪（支持自动从内存、Storage、队列或当前 Flow 画板提取自愈）
+ * @returns {Promise<boolean>}
+ */
+async function ensureBatch1ImagesAvailable() {
+    // 1. 若 APP.factory.batch1Images 已存在且有有效图片数据，直接通过
+    if (Array.isArray(APP.factory.batch1Images) && APP.factory.batch1Images.length > 0) {
+        const hasValidBase64 = APP.factory.batch1Images.some(img => img?.base64 && img.base64.length > 100);
+        if (hasValidBase64) return true;
+    }
+
+    // 2. 尝试从 chrome.storage.local 恢复
+    try {
+        const stored = await new Promise(resolve => {
+            chrome.storage.local.get(['factoryBatch1Images'], resolve);
+        });
+        if (stored?.factoryBatch1Images && stored.factoryBatch1Images.length > 0) {
+            const hasValid = stored.factoryBatch1Images.some(img => img?.base64 && img.base64.length > 100);
+            if (hasValid) {
+                APP.factory.batch1Images = stored.factoryBatch1Images;
+                APP.factory.imageGenerationComplete = true;
+                return true;
+            }
+        }
+    } catch (_) {}
+
+    // 3. 尝试从 APP.queue 中提取成功并带有 Base64 的分镜图
+    const queueImages = APP.queue.filter(q => q.type !== 'characterRef' && (q.status === 'done' || q.status === 'completed') && q.imageBase64);
+    if (queueImages.length > 0) {
+        const prompts = (APP.prompts && APP.prompts.length > 0)
+            ? APP.prompts.slice(0, queueImages.length)
+            : queueImages.map((q, i) => ({ number: q.number || String(i + 1).padStart(2, '0') }));
+        const images = queueImages.map(q => q.imageBase64);
+        APP.factory.batch1Filenames = queueImages.map(q => q.imageFilename || '');
+        await saveBatch1Images(prompts, images);
+        APP.factory.imageGenerationComplete = true;
+        return true;
+    }
+
+    // 4. 终极自愈后备：向当前活跃的 Google Flow 页面发送指令，直接抓取画板上已渲染完成的图片 Tile！
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id && isFlowTabUrl(tab.url)) {
+            showToast("🔍 正在从 Flow 画板自动绑定已生成的分镜图...", 'info', 2000);
+            const res = await new Promise(resolve => {
+                chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_FACTORY_TILES' }, r => {
+                    if (chrome.runtime.lastError) resolve(null);
+                    else resolve(r);
+                });
+            });
+
+            if (res?.success && Array.isArray(res.images) && res.images.length > 0) {
+                const count = res.images.length;
+                const prompts = (APP.prompts && APP.prompts.length > 0)
+                    ? APP.prompts.slice(0, count)
+                    : res.images.map((img, i) => ({ number: String(i + 1).padStart(2, '0'), prompt: `Shot ${i + 1}` }));
+                const images = res.images.map(img => img.base64);
+                await saveBatch1Images(prompts, images);
+                APP.factory.imageGenerationComplete = true;
+                showToast(`✓ 已成功从 Flow 画板读取并绑定 ${count} 张分镜画面！`, 'success');
+                return true;
+            }
+        }
+    } catch (e) {
+        console.warn('[FACTORY] 自动读取画板图片失败:', e);
+    }
+
+    return false;
+}
+
+/**
  * 동영상 프롬프트 생성 (Gemini API 호출)
  */
 async function generateVideoPrompts() {
@@ -9693,23 +9881,16 @@ async function generateVideoPrompts() {
         return;
     }
 
-    // 배치1 이미지가 있는지 확인
-    if (APP.factory.batch1Images.length === 0) {
-        // Storage에서 로드 시도
-        const stored = await new Promise(resolve => {
-            chrome.storage.local.get(['factoryBatch1Images'], resolve);
-        });
-        if (stored.factoryBatch1Images && stored.factoryBatch1Images.length > 0) {
-            APP.factory.batch1Images = stored.factoryBatch1Images;
-        } else {
-            showToast("No batch 1 images found. Solution: Run 'Start image' or 'Auto generation' first, then click 'Generate video prompts'.", 'error');
-            return;
-        }
+    // 确保第 1 批分镜图片已就绪（支持自动从画板读取自愈）
+    const hasImages = await ensureBatch1ImagesAvailable();
+    if (!hasImages) {
+        showToast("未找到第 1 批图片。请先点击【开始生图】或【全自动制片】生成图片，再生成视频提示词。", 'error');
+        return;
     }
 
     const originalText = btn.textContent;
     btn.disabled = true;
-    btn.innerHTML = `<span class="spinner"></span> ${"GENERATING VIDEO PROMPTS..."}`;
+    btn.innerHTML = `<span class="spinner"></span> 正在生成视频提示词...`;
 
     APP.isGeneratingPrompts = true;  // ★ Gemini API 호출 시작 (모드 전환 차단)
 
@@ -9987,7 +10168,7 @@ function renderVideoPromptList() {
                 APP.factory.videoQueue[idx].editMode = false;
                 renderVideoPromptList();
                 updateGeneratedVideoPromptsText();  // ★ 생성된 동영상프롬프트 박스 동기화
-                showToast("Saved", 'success');
+                showToast("已保存", 'success');
             }
         });
     });
@@ -10092,7 +10273,7 @@ async function startVideoGeneration() {
 
     const queue = APP.factory.videoQueue;
     if (!queue || queue.length === 0) {
-        showToast("No videos to generate. Solution: Click 'Generate video prompts' first, then 'Start video generation'.", 'error');
+        showToast("没有可生成的视频任务。请先点击【生成视频提示词】，再点击【开始生成视频】。", 'error');
         return;
     }
 
@@ -10105,7 +10286,7 @@ async function startVideoGeneration() {
         if (failedCount > 0) {
             showToast("No pending items. Use 'Retry Failed' for failed items ({count})".replace('{count}', failedCount), 'info');
         } else {
-            showToast("No videos to generate. Solution: Click 'Generate video prompts' first, then 'Start video generation'.", 'error');
+            showToast("没有可生成的视频任务。请先点击【生成视频提示词】，再点击【开始生成视频】。", 'error');
         }
         return;
     }
@@ -10128,25 +10309,25 @@ async function startVideoGeneration() {
     // ★ 이미지 있는 항목만 필터링해서 처리
     const validPendingItems = pendingItems.filter(item => item.imageBase64 && item.imageBase64.length >= 100);
     if (validPendingItems.length === 0) {
-        showToast("No videos to generate. Solution: Click 'Generate video prompts' first, then 'Start video generation'.", 'error');
+        showToast("没有可生成的视频任务。请先点击【生成视频提示词】，再点击【开始生成视频】。", 'error');
         return;
     }
 
     // Flow 탭 확인 및 첫 화면으로 이동
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.url?.includes('flow.google.com')) {
-        showToast("Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", 'error');
+        showToast("请先在浏览器标签页中打开 Google Flow (flow.google.com)。", 'error');
         return;
     }
     const navigated = await navigateToFlowHomeAndWait(tab);
     if (!navigated) {
-        showToast("Content Script injection failed. Please refresh the Flow page (flow.google.com).", 'error');
+        showToast("自动化脚本注入失败，请刷新 Flow 页面 (flow.google.com) 后重试。", 'error');
         return;
     }
     let updatedTab = await chrome.tabs.get(tab.id);
     const loaded = await ensureContentScriptLoaded(updatedTab);
     if (!loaded) {
-        showToast("Content Script injection failed. Please refresh the Flow page (flow.google.com).", 'error');
+        showToast("自动化脚本注入失败，请刷新 Flow 页面 (flow.google.com) 后重试。", 'error');
         return;
     }
     updatedTab = await chrome.tabs.get(tab.id);
@@ -10164,7 +10345,7 @@ async function startVideoGeneration() {
     // ★ 다운로드 폴더 설정 (이미지와 동일한 폴더)
     chrome.runtime.sendMessage({
         type: 'SETUP_DOWNLOAD',
-        folder: APP.settings.downloadFolder || 'AI4Next',
+        folder: APP.settings.downloadFolder || 'FlowStudioPro',
         subfolder: projectName
     });
 
@@ -10430,23 +10611,23 @@ function showVideoCompletion() {
         const isFullyProcessed = processedCount >= totalItems;
         if (isFullyProcessed && queueSuccess > 0 && queueFail === 0) {
             iconEl.textContent = '✅';
-            titleEl.textContent = "ALL VIDEOS GENERATED!";
+            titleEl.textContent = "🎬 全部视频生成完成！ (ALL VIDEOS GENERATED)";
         } else if (isFullyProcessed && queueSuccess === 0) {
             iconEl.textContent = '❌';
-            titleEl.textContent = "GENERATION FAILED";
+            titleEl.textContent = "❌ 视频生成失败 (GENERATION FAILED)";
         } else if (isFullyProcessed && queueSuccess > 0 && queueFail > 0) {
             iconEl.textContent = '⚠️';
-            titleEl.textContent = "PARTIALLY COMPLETED";
+            titleEl.textContent = "⚠️ 视频部分完成 (PARTIALLY COMPLETED)";
         } else {
             iconEl.textContent = '⚠️';
-            titleEl.textContent = "PARTIALLY COMPLETED";
+            titleEl.textContent = "⚠️ 视频部分完成 (PARTIALLY COMPLETED)";
         }
     }
 
     // 통계 표시 (큐 기반)
     const statsEl = $('#factoryVideoCompletionStats');
     if (statsEl) {
-        statsEl.innerHTML = `<span class="stat-success">${queueSuccess}</span> ${"SUCCESS"} / <span class="stat-fail">${queueFail}</span> ${"FAILED"}`;
+        statsEl.innerHTML = `<span class="stat-success">${queueSuccess}</span> 成功 / <span class="stat-fail">${queueFail}</span> 失败`;
     }
 
     // 실패 재생성 버튼 표시/숨김 (큐 기반)
@@ -10512,7 +10693,7 @@ function factoryRegenAllImages() {
 function factoryRegenAllVideos() {
     const queue = APP.factory.videoQueue;
     if (!queue || queue.length === 0) {
-        showToast("No videos to generate. Solution: Click 'Generate video prompts' first, then 'Start video generation'.", 'error');
+        showToast("没有可生成的视频任务。请先点击【生成视频提示词】，再点击【开始生成视频】。", 'error');
         return;
     }
     // ★ 이미지 있는 항목만 pending으로 (skipped 항목은 제외)
@@ -10563,19 +10744,19 @@ async function regenerateSingleVideo(idx) {
     const item = queue[idx];
 
     if (!item) {
-        showToast("Item not found. Solution: Start a new project or refresh the list and try again.", 'error');
+        showToast("未找到对应任务项。请新建项目或刷新列表后重试。", 'error');
         return;
     }
 
     if (!item.imageBase64 || item.imageBase64.length < 100) {
-        showToast("Cannot regenerate without image. Solution: Generate the image for this item first, then retry.", 'error');
+        showToast("缺少图片，无法生成视频。请先为该分镜生成图片后再试。", 'error');
         return;
     }
 
     // Flow 탭 확인
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.url?.includes('flow.google.com')) {
-        showToast("Flow page (flow.google.com) required. Please open flow.google.com in a new tab.", 'error');
+        showToast("请先在浏览器标签页中打开 Google Flow (flow.google.com)。", 'error');
         return;
     }
 
@@ -10595,7 +10776,7 @@ async function regenerateSingleVideo(idx) {
     // 다운로드 폴더 설정 (이미지와 동일한 폴더)
     chrome.runtime.sendMessage({
         type: 'SETUP_DOWNLOAD',
-        folder: APP.settings.downloadFolder || 'AI4Next',
+        folder: APP.settings.downloadFolder || 'FlowStudioPro',
         subfolder: projectName
     });
 
@@ -10690,7 +10871,7 @@ async function regenerateSingleVideo(idx) {
             item.status = 'failed';
             renderVideoPromptList();
             updateVideoProgressBar();
-            showToast("Regeneration failed. Solution: Wait a moment and try again.", 'error');
+            showToast("重新生成失败，请稍后重试。", 'error');
             APP.factory.videoRunning = false;
             APP.factory.isVideoPhase = false;
             $('#section-progress')?.classList.add('hidden');

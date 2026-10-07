@@ -6733,5 +6733,34 @@ body.mint-theme #geminiKeySettingBtn:hover {
   animation: pulse 1.5s infinite;
 }
 
+/* ========== SCR SCENE CONSISTENCY STYLES ========== */
+.scene-ref-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
 
+.scene-slot {
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  position: relative;
+}
 
+.scene-slot.has-content {
+  border: 1px solid #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+}
+
+.scene-slot .slot-header .slot-code {
+  background: rgba(2, 132, 199, 0.12);
+  color: #0284c7;
+  border-radius: 4px;
+}
+
+.scene-slot .slot-dropzone {
+  border-color: rgba(2, 132, 199, 0.3);
+}
+
+.modal-backdrop:not(.hidden) {
+  display: flex !important;
+}

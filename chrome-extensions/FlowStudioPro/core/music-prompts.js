@@ -91,12 +91,12 @@ const MUSIC_GENRE_OUTPUT_FORMAT = `
 Return ONLY JSON. No markdown, no explanation, no other text. COMPACT format.
 {
   "characters": [
-    {"code": "MCR", "name": "주인공명", "description": "MCR(Type: detailed description) — Type은 Human/Flower/Animal/Nature/Object/Abstract 중 하나"}
+    {"code": "MCR", "name": "CharacterName", "description": "MCR(Type: detailed description) — Type is one of Human/Flower/Animal/Nature/Object/Abstract"}
   ],
   "scenes": [
-    [1, "MCR", "첫가사앞부분14자이내"],
-    [2, "", "배경만설명14자이내"],
-    [3, "MCR,SC1", "다음Beat가사"]
+    [1, "MCR", "firstLyrics14chars"],
+    [2, "", "backgroundOnly"],
+    [3, "MCR,SC1", "nextBeatLyrics"]
   ]
 }
 
@@ -108,7 +108,7 @@ scenes = array of arrays: [sceneNumber, characters, scriptStart]
 - scenes.length = 결정한 총 Beat 수 (사용자에게 알림으로 표시됨)
 
 description 예시 (MCR 유형별):
-  - MCR(Human: Korean female, 21yo, slim, long wavy black hair, wearing traditional white hanbok with pale blue jeogori)
+  - MCR(Human: female, 21yo, slim, long wavy black hair, wearing cream knit sweater and pleated skirt)
   - MCR(Flower: mystical thousand-year bloom, luminous white petals with pink tips, jade-green slender stem)
   - MCR(Animal: white butterfly, translucent wings with faint golden veins, graceful flight)
   - MCR(Nature: heavy downpour rain, cold atmosphere, glistening droplets on urban surfaces)

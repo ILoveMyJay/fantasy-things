@@ -1,54 +1,59 @@
-# Flow Studio Pro (AI4Next Unlocked) — 项目状态与全景上下文交接文档
+# Flow Studio Pro (NextGen v2.1.0) — 项目状态与全景上下文交接文档
 
 > 本文档由 Antigravity 自动维护，用于跨工作区与跨对话无缝转移上下文。在当前项目发起新对话时，Agent 读取本文档即可 100% 继承上一轮对话的全部认知与工作成果。
 
 ---
 
-## 1. 项目背景与来龙去脉
-- **原版插件**：Chrome 应用商店的官方扩展 `AI4Next`（版本 1.1.2，内部原名 `FLOW Factory`），专用于 Google Flow (`flow.google.com`) 的自动化生图与视频。
-- **隐藏功能破译**：
-  原作者在上架 1.1.2 版本时，在 UI 上强行精简/隐藏了大量高级功能（剧本拆分分镜、全自动制片厂、6 槽位角色一致性系统、品牌库导入导出等），并内置了 LemonSqueezy 的商业 License 验证。
-- **解构与重构成果**：
-  我们已将该扩展全部源码从本地 Chrome 扩展库中抽离，去除了应用商店更新限制与公钥绑定，并在本项目（`D:\ai_code\agy\AI4Next`）中将其打造成了一个完全解耦、永久解锁的独立专业版：**Flow Studio Pro (v2.0.0)**。
+## 1. 项目定位与核心演进
+- **项目定位**：基于 Chrome MV3 扩展的 Google Flow (`flow.google.com`) 电影级 AI 制片工作站。
+- **最新版本**：**v2.1.0 (NextGen)**
+- **核心升级维度**：
+  从早期单纯的“提示词批量提交点击器”全面跃迁为“深度融合 Google Flow 原生资产体系（Characters / Scenes / Ingredients）与 Veo 3.1 工业化制片流程”的一体化影视工作室。
 
 ---
 
-## 2. 已完成的核心技术改造清单
+## 2. 核心技术改造与新特性清单 (v2.1.0)
 
-### ① 顶层模式导航栏唤醒 (Studio Mode Navigation)
-- 在 `sidepanel/sidepanel.html` 顶部新增了模式切换栏；
-- 在 `sidepanel/sidepanel.css` 中设计了现代化高亮与悬浮动效；
-- 在 `sidepanel/sidepanel.js` 的 `normalizeVisibleMode()` 中解除模式拦截，支持自由切换：
-  - ⚡ **Prompt 批量模式 (`textToImage`)**：快速输入、批量运行、图生视频。
-  - 🎬 **剧本分镜模式 (`scriptToImage` - PRO)**：长剧本导入、5 种切分算法（Uniform 起承转合、短视频句子切分、小说语义切分、9 种音乐流派 MV 歌词切分）。
-  - 🏭 **全自动制片厂 (`factory` - FULL AUTO)**：剧本分镜 ➔ 连续图像渲染 ➔ 动态视频生成全自动流水线。
+### ① 双锚点一致性控制台：CCR (角色) + SCR (场景)
+- **通用资产管理中枢**：新增 `sidepanel/asset-manager.js`，彻底合并了旧版本重复率极高的角色引用脚本，移除了冗余孤立的 `custom-char-refs-p2i.js`。
+- **CCR 6 槽角色控制台**：支持 1 个 MCR 主角槽 + 5 个 SC1~SC5 配角槽（图片、提示词、个性化名称标签如 `@Hero`）。
+- **SCR 4 槽场景控制台**：全新引入 4 个核心场景槽位（SCN1~SCN4），锁定关键环境的空间构景、材质色调与全局光影。
+- **资产包导出与导入**：支持将角色与场景资产一键导出为标准 JSON 资产包（`FlowStudio_Assets_*.json`），随时跨项目复用。
 
-### ② 永久解锁 PRO 权限与 6 槽角色一致性
-- 重写了 `checkFactoryAccess()`、`hasPaidLicenseLocal()`、`validatePaidKey()`，永久返回 `{ allowed: true, type: 'paid', remaining: 999999 }`；
-- 解锁了 **CCR 角色一致性系统**（1 个 MCR 主角槽 + 5 个 SC1~SC5 配角槽）；
-- 解锁了原本标为 Paid Feature 的 **品牌角色库 (Brand List)** JSON 一键导出与导入；
-- 解锁了被 disabled 的高阶视频模型（如 Veo 3.1 Quality）。
+### ② 深度对齐 Google Flow 原生 `@mention` 体系
+- 升级 `core/gemini.js`：在 AI 智能拆解剧本或输出分镜时，不再把代号替换为笼统的 "The main character"，而是规范输出带有 `@` 前缀的资产标签（如 `@Hero`、`@CyberBar` 或 `@MCR`、`@SCN1`）。
+- 保证生成的 Prompt 能够直接激活 Google Flow 画板底层的原生注意力特征绑定通道，极大提升了多镜头之间的面部与场景一致性。
 
-### ③ 设置面板内嵌 Gemini AI 引擎配置
-- 在 `sidepanel/sidepanel.html` 的 Settings 区域新增了 Gemini API Key 与分析模型选择（Gemini 3 Flash、2.5 Pro 等），并在 `sidepanel.js` 中打通了输入与持久化存储。
+### ③ 生产力神器：Markdown 表格与 CSV 分镜一键智能导入
+- 新增 `core/table-importer.js`：原生解析来自 Notion、飞书、ChatGPT、Excel 的分镜表格。
+- 智能表头匹配：自动识别【镜头号、角色、场景、景别、提示词/画面描述、运镜】，并按 Google Flow 最佳实践（`@角色, @场景, 景别, 动作画面, Camera 运镜`）自动重构为专业 Prompt。
+- 在剧本输入区顶部集成「📊 导入表格」交互模态框，解析完成后自动流转至步骤二（镜头编排）。
 
-### ④ 静态语法与合法性校验
-- 所有 13 个 JavaScript 核心文件均已通过 `node --check` 严格的静态语法检测，Manifest 结构合法，可直接免打包加载。
+### ④ 安全加固与死代码彻底清退
+- 全面清退不安全的 `innerHTML` 拼接隐患，引入 `escapeHtml` 转义。
+- 彻底剔除原作者遗留的 Google Apps Script 激活码网络请求（`AKfycbyBR...`）与已失效的 LemonSqueezy 逻辑，所有 Pro 权限在本地干净常驻生效。
 
 ---
 
 ## 3. Chrome 扩展安装与加载路径
-- **扩展所在根目录**：`D:\ai_code\agy\AI4Next`
+- **扩展所在目录**：当前根目录（即包含 `manifest.json` 的目录）
 - **加载步骤**：
   1. 打开 Chrome 访问 `chrome://extensions/`；
   2. 打开右上角「开发者模式」；
-  3. 点击「加载已解压的扩展程序」，选中本目录 `D:\ai_code\agy\AI4Next`；
-  4. 打开 `flow.google.com` 并启动侧边栏即可。
+  3. 点击「加载已解压的扩展程序」，选中本扩展目录；
+  4. 打开 `flow.google.com` 即可启动侧边栏制片工作站。
 
 ---
 
-## 4. 后续规划与可继续扩展方向
-1. **与 本地 Agent 自动化打通**：
-   在新插件中加入本地接口/剪贴板监听，支持在对话框中由 AI 直接把写好的分镜头推入插件队列自动提交。
-2. **支持更多表格格式**：支持直接复制粘贴 Excel / Markdown 表格批量导入分镜清单。
-3. **分镜与角色资产联动**：直接对接本地绘本或图文工作流，实现一键导入导出。
+## 4. 源码结构索引
+- `manifest.json`：MV3 清单配置 (v2.1.0)
+- `background/background.js`：Service Worker (CDP 鼠标轨迹模拟、真实点击、下载流控)
+- `core/page-bridge.js`：MAIN world 桥接，直接与 Slate/ProseMirror 编辑器上下文通信
+- `core/flow-automation.js`：DOM 自动化与提交重试核心
+- `core/table-importer.js`：Markdown / CSV 表格解析与提示词组装器
+- `core/gemini.js`：AI 分镜大脑引擎与 @mention 标签生成器
+- `core/music-prompts.js`：9 种音乐流派视觉风格模板
+- `sidepanel/asset-manager.js`：CCR 角色与 SCR 场景统一资产管理器
+- `sidepanel/sidepanel.html`：工作台主 UI 结构（三大模式 + 三阶段步进器 + 双锚点控制台 + 表格导入模态框）
+- `sidepanel/sidepanel.js`：侧边栏控制器业务逻辑与事件编排
+- `sidepanel/sidepanel.css`：现代化影视工作台 Glassmorphism 样式与明暗主题

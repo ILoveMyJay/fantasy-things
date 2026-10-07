@@ -313,6 +313,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    // ★ FETCH_IMAGE_BASE64: 背景服务工作线程抓取图片并转为 Base64（无 CORS 限制）
+    if (message.type === 'FETCH_IMAGE_BASE64') {
+        const url = message.url;
+        (async () => {
+            try {
+                if (!url) {
+                    sendResponse({ ok: false, error: 'Empty URL' });
+                    return;
+                }
+                const resp = await fetch(url);
+                if (!resp.ok) {
+                    sendResponse({ ok: false, status: resp.status, error: `HTTP ${resp.status}` });
+                    return;
+                }
+                const blob = await resp.blob();
+                const buffer = await blob.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                const chunkSize = 8192;
+                for (let i = 0; i < bytes.length; i += chunkSize) {
+                    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+                }
+                const base64 = btoa(binary);
+                const mime = blob.type || 'image/jpeg';
+                sendResponse({ ok: true, base64: `data:${mime};base64,${base64}` });
+            } catch (e) {
+                sendResponse({ ok: false, error: e?.message });
+            }
+        })();
+        return true;
+    }
+
     // videoPipelineResume 저장 (content script → background 경유, storage.local만 사용)
     // ★ Factory 전용: isFactoryVideoPhase일 때 factoryVideoPipelineResume에도 저장 (다른 모드 덮어쓰기 방지)
     if (message.type === 'SAVE_RESUME') {

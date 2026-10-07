@@ -15,40 +15,41 @@ const DEFAULT_SETTINGS = {
     openaiModel: 'deepseek-chat',
     openaiPreset: 'deepseek',
 
-    // 캐릭터
-    nationality: 'korean',
+    // 角色国籍/文化预设 ('universal' | 'chinese' | 'korean' | 'japanese' | 'western' ...)
+    nationality: 'universal',
 
-    // 다운로드
-    downloadFolder: 'AI4Next',
+    // 存储目录
+    downloadFolder: 'FlowStudioPro',
     projectName: '',
 
-    // 비율
+    // 比例与模型
     aspectRatio: '16:9',
-    flowImageModel: 'Nano Banana 2 Lite',
+    flowImageModel: 'Nano Banana 2.1',
     outputCount: 1,
+    autoSyncNativeCharacters: true,
 
-    // 비디오
-    videoResolution: '480p',
+    // 视频
+    videoResolution: '1K',
     videoDuration: '6s',
     videoPreset: 'normal',
 
-    // 딜레이
+    // 延迟
     promptDelay: 30,
     promptSeparator: '###',
 
-    // 기본 프롬프트
+    // 默认视频提示词
     defaultVideoPrompt: 'Dynamic action, Active camera angle',
 
-    // 스타일
+    // 风格
     selectedStyle: '',
     customStyles: [],
 
-    // UI
+    // 界面语言与主题
     theme: 'light',
-    language: 'ko',
+    language: 'zh-CN',
     settingsPanel: 'basic',
 
-    // 모드
+    // 模式
     lastMode: 'textToImage'
 };
 

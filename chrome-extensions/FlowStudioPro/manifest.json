@@ -22,7 +22,7 @@
       "matches": [ "*://flow.google.com/*" ],
       "run_at": "document_end"
    } ],
-   "description": "Google Flow 批量提示词生图/生视频、剧本智能分镜拆解与6槽位角色一致性制片厂自动化工具",
+   "description": "Google Flow 电影级制片工作室：原生@mention资产对齐、6槽角色+4槽场景双锚点一致性、Markdown表格导入与全自动制片流水线",
    "host_permissions": [ "*://flow.google.com/*", "https://generativelanguage.googleapis.com/*", "<all_urls>" ],
    "icons": {
       "128": "icons/ICON128.png",
@@ -36,5 +36,5 @@
    "side_panel": {
       "default_path": "sidepanel/sidepanel.html"
    },
-   "version": "2.0.0"
+   "version": "2.1.0"
 }

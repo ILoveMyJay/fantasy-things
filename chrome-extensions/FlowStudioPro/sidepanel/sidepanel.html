@@ -112,7 +112,23 @@
             </div>
             <div class="section">
               <label class="label" for="downloadFolder">保存文件夹名称（位于系统的「下载」目录下）</label>
-              <input type="text" id="downloadFolder" class="input" placeholder="AI4Next" value="AI4Next">
+              <input type="text" id="downloadFolder" class="input" placeholder="FlowStudioPro" value="FlowStudioPro">
+            </div>
+            <div class="section">
+              <label class="label" for="nationalitySelect">故事与角色默认国籍/文化背景</label>
+              <select id="nationalitySelect" class="input">
+                <option value="universal">通用/无特定文化限制 (Universal - 推荐)</option>
+                <option value="chinese">中国文化背景 (Chinese)</option>
+                <option value="western">欧美文化背景 (Western / American)</option>
+                <option value="japanese">日本文化背景 (Japanese)</option>
+                <option value="korean">韩国文化背景 (Korean)</option>
+                <option value="southeast_asian">东南亚文化背景 (Southeast Asian)</option>
+                <option value="arab">阿拉伯文化背景 (Arab)</option>
+                <option value="indian">印度文化背景 (Indian)</option>
+                <option value="latin">拉丁美洲文化背景 (Latin American)</option>
+                <option value="black">非洲/非裔文化背景 (Black)</option>
+              </select>
+              <span class="info-text">选择通用模式可生成任意现代、奇幻、治愈动画故事而不添加多余文化标签；亦可根据需要指定特定文化。</span>
             </div>
             <div class="section">
               <label class="label" for="promptSeparatorInput">提示词批量分隔符</label>
@@ -136,6 +152,13 @@
                 <button class="stepper-btn" id="delayPlus">+</button>
               </div>
               <span class="info-text">扩展会自动叠加正态分布高斯微扰，避免被 Google 机器人检测。</span>
+            </div>
+            <div class="section" style="margin-top:12px;">
+              <label class="toggle-label" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
+                <span class="label" style="margin:0;">自动注册到 Flow 原生角色库</span>
+                <input type="checkbox" id="settingAutoSyncNativeCharacters" checked style="width:16px;height:16px;">
+              </label>
+              <span class="info-text">在批量生成角色参考图后，自动将角色注册到 Flow 左侧「角色」面板中。</span>
             </div>
           </div>
         </div>
@@ -293,6 +316,7 @@
             <div class="panel-box-head">
               <span class="section-title">1. 剧本 / 故事文本输入</span>
               <div class="script-head-actions">
+                <button type="button" id="btn-import-table" class="btn btn-subtle btn-xs" title="从 Notion/飞书/Markdown 复制表格导入">📊 导入表格</button>
                 <button type="button" id="btn-script-edit" class="btn btn-subtle btn-xs">编辑</button>
                 <button type="button" id="btn-script-del" class="btn btn-subtle btn-xs">清空</button>
                 <button type="button" id="btn-script-save" class="btn btn-subtle btn-xs">保存草稿</button>
@@ -402,6 +426,38 @@
                 <!-- 6 slots: MCR, SC1~SC5 (JS dynamic) -->
               </div>
             </div>
+          </div>
+
+          <!-- ========== SCENE CONSISTENCY REFERENCES (SCR STUDIO) ========== -->
+          <div class="panel-box">
+            <div class="panel-box-head">
+              <div class="panel-box-title-group">
+                <span class="section-title">4. 场景一致性控制台 (SCR)</span>
+                <span class="badge-pro">PRO 4 槽</span>
+              </div>
+              <div class="custom-char-refs-toggle-row">
+                <input type="checkbox" id="useCustomSceneRefsCheckbox"
+                  style="width:16px;height:16px;cursor:pointer;accent-color:var(--mint-dark,#4338CA);">
+                <label for="useCustomSceneRefsCheckbox" class="custom-char-refs-toggle-label">启用场景空镜/光影锁定</label>
+              </div>
+            </div>
+
+            <p class="custom-char-refs-toggle-desc">
+              锁定关键场景的空间构景、材质色调与全局光影（SCN1~SCN4）。分镜中可直接使用 @SCN1 或自定义名称标签。
+            </p>
+
+            <div class="custom-char-refs-section hidden" id="customSceneRefsSection">
+              <div class="brand-profile-toolbar">
+                <button type="button" id="clearAllSceneRefsBtn" class="btn btn-subtle btn-xs">清空场景槽位</button>
+              </div>
+
+              <div class="custom-ref-grid scene-ref-grid" id="sceneRefGrid">
+                <!-- 4 slots: SCN1~SCN4 (JS dynamic) -->
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-box" style="padding-top:10px;">
 
             <!-- AI 프롬프트 생성 버튼 그룹 -->
             <div class="prompt-gen-buttons" style="margin-top:14px;">
@@ -420,6 +476,7 @@
               <div id="charRefsList" class="character-refs-list"></div>
               <div class="char-ref-action-row">
                 <button id="btnGenerateAllRefs" class="btn btn-primary">🎨 在当前画板生成全部角色定妆图</button>
+                <button id="btnSyncAllFlowChars" class="btn btn-secondary hidden" title="将生成的全部角色注册到Flow左侧原生角色库">🌟 全部注册到Flow角色库</button>
                 <button id="btnStopCharRefGen" class="btn btn-secondary hidden">⏹ 停止定妆</button>
               </div>
               <div id="charRefCompletionMsg" class="charref-completion hidden">
@@ -619,9 +676,9 @@
               <div class="prompt-flow-select-field">
                 <label class="label" for="imageModelSelect">生图模型</label>
                 <select id="imageModelSelect" class="input native-flow-select" data-enhance-select="model">
-                  <option value="Nano Banana 2 Lite">Banana 2 极速版 — 免费</option>
-                  <option value="Nano Banana 2" selected>Banana 2 标准版 — 免费</option>
-                  <option value="Nano Banana Pro">Banana Pro 专业版 — 免费</option>
+                  <option value="Nano Banana 2.1" selected>Nano Banana 2.1 — 推荐</option>
+                  <option value="Nano Banana 2 Lite">Nano Banana 2 Lite — 极速</option>
+                  <option value="Nano Banana Pro">Nano Banana Pro — 专业</option>
                 </select>
                 <div class="flow-select" data-select-target="imageModelSelect"></div>
               </div>
@@ -1000,13 +1057,34 @@
     </div>
   </div>
 
+  <!-- ========== TABLE IMPORT MODAL ========== -->
+  <div id="table-import-modal" class="modal-backdrop hidden" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);z-index:9999;display:none;align-items:center;justify-content:center;padding:16px;">
+    <div class="modal-dialog" style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;width:100%;max-width:540px;padding:20px;box-shadow:var(--card-shadow);display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="margin:0;font-size:16px;font-weight:700;">📊 批量导入 Markdown / CSV 分镜表</h3>
+        <button type="button" id="closeTableImportModal" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);line-height:1;">&times;</button>
+      </div>
+      <p class="info-text" style="margin:0;">支持从 Notion、飞书、ChatGPT、Excel 复制的表格。系统会自动提取【镜头号、角色、场景、景别、提示词、运镜】并智能拼装。</p>
+      <textarea id="tableImportInput" class="textarea" rows="8" placeholder="| 镜头号 | 角色 | 场景 | 景别 | 画面描述 | 运镜 |
+|---|---|---|---|---|---|
+| 01 | @Hero | @CyberBar | 特写 | 在昏暗霓虹灯下擦拭酒杯，眼神警惕 | Slow push-in |
+| 02 | @Alice | @Street | 全景 | 撑着黑伞在雨夜穿过斑马线 | Pan left |"></textarea>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button type="button" id="cancelTableImport" class="btn btn-secondary">取消</button>
+        <button type="button" id="confirmTableImport" class="btn btn-primary">解析并填入队列</button>
+      </div>
+    </div>
+  </div>
+
   <footer class="pp-footer">
-    <span class="pp-link">Flow Studio Pro (AI4Next Unlocked)</span>
+    <span class="pp-link">Flow Studio Pro (NextGen v2.1)</span>
   </footer>
 
   <script src="../core/filename.js"></script>
   <script src="../core/music-prompts.js"></script>
+  <script src="../core/table-importer.js"></script>
   <script src="../core/gemini.js"></script>
+  <script src="asset-manager.js"></script>
   <script src="custom-char-refs.js"></script>
   <script src="sidepanel.js"></script>
 </body>
