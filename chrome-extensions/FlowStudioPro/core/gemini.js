@@ -528,18 +528,18 @@ async function _runGiseungjeongyeolMode(script, numPrompts, apiKey, stylePrompt,
     const batches = _packSegmentsIntoBatches(segments);
 
     // ─── DEBUG: 분할 검증 로그 (테스트 후 제거) ───
-    console.log('🔍 [DEBUG] ═══ 프롬프트 분할 검증 ═══');
-    console.log(`🔍 요청: ${numPrompts}개 | 세그먼트: ${segments.length}개 | 배치: ${batches.length}개`);
-    segments.forEach(s => console.log(`🔍 세그먼트: ${s.label} → ${s.numPrompts}개, 텍스트 ${(s.text||'').length}자`));
+    console.log('🔍 [DEBUG] ═══ 提示词分段校验 ═══');
+    console.log(`🔍 请求: ${numPrompts}个 | 片段: ${segments.length}个 | 批次: ${batches.length}个`);
+    segments.forEach(s => console.log(`🔍 片段: ${s.label} → ${s.numPrompts}个, 文本 ${(s.text||'').length}字`));
     batches.forEach((batch, i) => {
         const total = batch.reduce((a, s) => a + s.numPrompts, 0);
-        const details = batch.map(s => `${s.label}(${s.numPrompts}개/${(s.text||'').length}자)`).join(' + ');
-        console.log(`🔍 배치${i+1}: ${total}개 = ${details}`);
+        const details = batch.map(s => `${s.label}(${s.numPrompts}个/${(s.text||'').length}字)`).join(' + ');
+        console.log(`🔍 批次${i+1}: ${total}个 = ${details}`);
     });
     const totalPrompts = batches.reduce((a, b) => a + b.reduce((x, s) => x + s.numPrompts, 0), 0);
-    console.log(`🔍 총 프롬프트: ${totalPrompts}개 (요청: ${numPrompts}개) ${totalPrompts === numPrompts ? '✅ 일치' : '❌ 불일치!'}`);
+    console.log(`🔍 总提示词: ${totalPrompts}个 (请求: ${numPrompts}个) ${totalPrompts === numPrompts ? '✅ 一致' : '❌ 不一致!'}`);
     if (Array.isArray(userProvidedCharRefs) && userProvidedCharRefs.length > 0) {
-        console.log(`🎨 [PRO 2.0] 사용자 제공 캐릭터 ${userProvidedCharRefs.length}개:`,
+        console.log(`🎨 [PRO 2.0] 用户自定义角色 ${userProvidedCharRefs.length}个:`,
             userProvidedCharRefs.map(r => r.code).join(', '));
     }
     console.log('🔍 ═══════════════════════════════');
@@ -615,21 +615,20 @@ async function _runGiseungjeongyeolMode(script, numPrompts, apiKey, stylePrompt,
                         ...userProvidedCharRefs.map(r => ({ ...r, _userProvided: true })),
                         ...newFromAI
                     ];
-                    console.log(`🎨 [PRO 2.0] 하이브리드 병합: 사용자 ${userProvidedCharRefs.length}개 + AI 신규 ${newFromAI.length}개 = 총 ${characterRefs.length}개`);
+                    console.log(`🎨 [PRO 2.0] 混合合并: 用户 ${userProvidedCharRefs.length}个 + AI 新增 ${newFromAI.length}个 = 共 ${characterRefs.length}个`);
                 } else {
                     characterRefs = batchResult.characterRefs;
                 }
             }
 
-            // ★ PRO 2.0: 균일 모드 배치 검증 (대본 이탈, 개수, 번호 연속성)
+            // ★ PRO 2.0: 均分模式批次验证
             const segmentText = batchSegments.map(s => s.text || '').join('\n');
             const validation = _validateUniformBatchIntegrity(
                 batchIdx, batches.length, batchPromptCount, batchResult.prompts, segmentText, runningNum
             );
             const severity = _judgeValidationSeverity(validation, batchPromptCount);
-            // ★ 개수 편차 있을 때만 로그 (scriptText/번호는 파일명 규칙상 false positive 많음)
             if (severity === 'MAJOR' || severity === 'CRITICAL') {
-                console.log(`⚠️ [UNIFORM VALIDATION] Batch ${batchIdx + 1} 개수 편차 ${severity}: 예상 ${batchPromptCount}개 → 반환 ${batchResult.prompts.length}개`);
+                console.log(`⚠️ [UNIFORM VALIDATION] Batch ${batchIdx + 1} 数量偏差 ${severity}: 预期 ${batchPromptCount}个 → 返回 ${batchResult.prompts.length}个`);
             }
             if (onBatchProgress) {
                 onBatchProgress('validation', batchIdx + 1, batches.length, null, null, {
@@ -683,10 +682,10 @@ async function _runGiseungjeongyeolMode(script, numPrompts, apiKey, stylePrompt,
                 } : null
             });
         } else {
-            // ★ 배치 실패: 이미 생성된 프롬프트가 있으면 멈추고 부분 반환 + 재개 상태
+            // ★ 批次失败: 如果已有生成的提示词则停止并部分返回 + 恢复状态
             if (allPrompts.length > 0) {
                 const errMsg = _is429Error(lastBatchError) ? '429_RATE_LIMIT' : (lastBatchError?.message || 'BATCH_FAILED');
-                console.log(`ℹ️ 배치 ${batchIdx + 1}/${batches.length} 중단 (${errMsg}). ${allPrompts.length}개 생성 완료, 나머지 재개 가능.`);
+                console.log(`ℹ️ 批次 ${batchIdx + 1}/${batches.length} 中断 (${errMsg})。已生成 ${allPrompts.length} 个，剩余批次可断点续传。`);
                 const partialPrompts = allPrompts.map((p, idx) => ({
                     ...p,
                     number: String(idx + 1).padStart(2, '0'),
@@ -708,8 +707,8 @@ async function _runGiseungjeongyeolMode(script, numPrompts, apiKey, stylePrompt,
                     }
                 };
             }
-            // 첫 배치부터 실패 → throw
-            throw lastBatchError || new Error('프롬프트 생성에 실패했습니다.');
+            // 首个批次失败 → 抛出异常
+            throw lastBatchError || new Error('分镜提示词生成失败，请重试。');
         }
 
         if (batchIdx < batches.length - 1) {
@@ -720,7 +719,7 @@ async function _runGiseungjeongyeolMode(script, numPrompts, apiKey, stylePrompt,
 
     if (allPrompts.length === 0) {
         const cause = lastBatchError?.message || '';
-        throw new Error(cause ? `프롬프트 생성 실패: ${cause}` : '프롬프트 생성에 실패했습니다. 다시 시도해주세요.');
+        throw new Error(cause ? `分镜提示词生成失败: ${cause}` : '分镜提示词生成失败，请重试。');
     }
     const prompts = allPrompts.map((p, idx) => ({
         ...p,
@@ -731,12 +730,12 @@ async function _runGiseungjeongyeolMode(script, numPrompts, apiKey, stylePrompt,
 }
 
 // ═══════════════════════════════════════════
-// 429 중단 후 재개: 남은 배치만 실행하여 기존 결과와 병합
+// 429 中断后恢复: 仅执行剩余批次并合并已有结果
 // ═══════════════════════════════════════════
 async function resumePromptsGeneration(resumeState, existingPrompts, apiKey, onBatchProgress = null) {
-    // ★ PRO 2.0: 신규 분할 모드 resumeState 감지 → 전용 경로로 분기
+    // ★ PRO 2.0: 检测新切分模式 resumeState → 分支到专用路径
     if (resumeState && resumeState.splitMode && resumeState.splitMode !== 'giseungjeongyeol' && Array.isArray(resumeState.phase0SceneMap)) {
-        console.log(`🔄 [RESUME] 신규 분할 모드 (${resumeState.splitMode}) 재개 — batch ${resumeState.nextBatchIdx}부터`);
+        console.log(`🔄 [RESUME] 新切分模式 (${resumeState.splitMode}) 恢复 — 从 batch ${resumeState.nextBatchIdx} 继续`);
         return await _resumeSplitMode(resumeState, existingPrompts, apiKey, onBatchProgress);
     }
 
@@ -852,7 +851,7 @@ async function resumePromptsGeneration(resumeState, existingPrompts, apiKey, onB
                     }
                 };
             }
-            throw lastBatchError || new Error('프롬프트 생성에 실패했습니다.');
+            throw lastBatchError || new Error('分镜提示词生成失败，请重试。');
         }
 
         if (batchIdx < remainingBatches.length - 1) {
@@ -905,7 +904,7 @@ async function _runBatchMode(script, numPrompts, apiKey, stylePrompt, nationalit
 
 
     if (scenes.length === 0) {
-        throw new Error('씬 분할 실패. 대본을 확인하고 다시 시도해주세요.');
+        throw new Error('分镜切分失败。请检查剧本内容后重试。');
     }
 
     // 씬 수 보정: 초과 시 자르기
@@ -968,7 +967,7 @@ async function _runBatchMode(script, numPrompts, apiKey, stylePrompt, nationalit
 
     // 최종 검증
     if (allPrompts.length === 0) {
-        throw new Error('프롬프트 생성에 실패했습니다. 다시 시도해주세요.');
+        throw new Error('分镜提示词生成失败，请重试。');
     }
     if (allPrompts.length < scenes.length) {
     }
@@ -1647,11 +1646,11 @@ async function _callMusicSceneDivision(script, musicOptions, apiKey, userProvide
             ? globalThis.getMusicGenrePrompt
             : null;
     if (!fetcher) {
-        throw new Error('music-prompts.js 로드 실패 — getMusicGenrePrompt 미정의');
+        throw new Error('music-prompts.js 加载失败 — 未找到 getMusicGenrePrompt 函数');
     }
     const prompt = fetcher(genre, variables);
 
-    console.log(`🎵 [MUSIC MODE] 장르: ${genre}, 훅: ${hookVariation}, 기승전결: ${narrativeArc}, 커스텀캐릭터: ${characterReference ? 'Y' : 'N'}, 특별지시: ${specialInstructions ? 'Y' : 'N'}`);
+    console.log(`🎵 [MUSIC MODE] 风格: ${genre}, 副歌: ${hookVariation}, 起承转合: ${narrativeArc}, 自定义角色: ${characterReference ? 'Y' : 'N'}, 指令: ${specialInstructions ? 'Y' : 'N'}`);
 
     const phase0Tokens = 65536;
     const data = await _geminiApiCall(apiKey, prompt, phase0Tokens);
@@ -1689,7 +1688,7 @@ async function _runSplitMode(script, splitMode, apiKey, styleId, customStyle, na
 
     const scenes = divisionResult.scenes || [];
     if (scenes.length === 0) {
-        throw new Error('씬 분할 실패. 대본이 너무 짧거나 형식을 인식할 수 없습니다.');
+        throw new Error('分镜切分失败。剧本内容过短或无法识别故事结构。');
     }
 
     // ★ BUGFIX: _parseSceneDivision 결과의 `characters` 를 완전한 `characterRefs` (prompt+refSheetPrompt 포함) 로 변환
@@ -1711,9 +1710,9 @@ async function _runSplitMode(script, splitMode, apiKey, styleId, customStyle, na
     const N = scenes.length;
     if (onBatchProgress) onBatchProgress('split_decided', N, 1);
 
-    console.log(`🎬 [SPLIT MODE: ${splitMode}] Phase 0 완료 — ${N}개 씬, ${characterRefs.length}개 캐릭터`);
+    console.log(`🎬 [SPLIT MODE: ${splitMode}] Phase 0 完成 — ${N}个分镜, ${characterRefs.length}个角色`);
 
-    // ── Phase 2: 배치 프롬프트 생성 (기존 _runBatchMode 로직 재사용) ──
+    // ── Phase 2: 批次提示词生成 ──
     const BATCH_MAX = 25;
     const totalBatches = Math.ceil(N / BATCH_MAX);
     let allPrompts = [];
@@ -1744,9 +1743,9 @@ async function _runSplitMode(script, splitMode, apiKey, styleId, customStyle, na
                 batchPrompts = await _callBatchPromptGeneration(
                     script, batchScenes, characterRefs, apiKey, stylePrompt, nationality, styleId, userDirections,
                     maxTokens, previousBatchPrompts, previousBatchSummary,
-                    scenes,      // ★ phase0SceneMap — 전체 씬 구조 잠금
-                    splitMode,   // ★ splitMode 표시용
-                    customStyle  // ★ v1.5: 2-레이어 스타일 resolver
+                    scenes,      // ★ phase0SceneMap — 全局分镜锁定
+                    splitMode,
+                    customStyle
                 );
                 if (batchPrompts && batchPrompts.length > 0) break;
             } catch (e) {
@@ -1756,11 +1755,10 @@ async function _runSplitMode(script, splitMode, apiKey, styleId, customStyle, na
         }
 
         if (batchPrompts && batchPrompts.length > 0) {
-            // ★ 검증: 개수 편차 있을 때만 로그
             const validation = _validateBatchSceneIntegrity(batch, totalBatches, batchScenes, batchPrompts);
             const severity = _judgeValidationSeverity(validation, batchScenes.length);
             if (severity === 'MAJOR' || severity === 'CRITICAL') {
-                console.log(`⚠️ [SPLIT VALIDATION] Batch ${batch + 1} 개수 편차 ${severity}: 예상 ${batchScenes.length}개 → 반환 ${batchPrompts.length}개`);
+                console.log(`⚠️ [SPLIT VALIDATION] Batch ${batch + 1} 数量偏差 ${severity}: 预期 ${batchScenes.length}个 → 返回 ${batchPrompts.length}个`);
             }
             if (onBatchProgress) {
                 onBatchProgress('validation', batch + 1, totalBatches, null, null, {
@@ -1833,7 +1831,7 @@ async function _runSplitMode(script, splitMode, apiKey, styleId, customStyle, na
             // ★ 배치 실패: 즉시 partial + resumeState 반환 (silent data loss 방지)
             //   allPrompts가 비어있어도(배치 1 실패) 명시적으로 실패 표시 + 재개 가능
             const errMsg = 'BATCH_FAILED';
-            console.log(`ℹ️ [SPLIT MODE] 배치 ${batch + 1}/${totalBatches} 중단. ${allPrompts.length}개 생성 완료, 재개 가능.`);
+            console.log(`ℹ️ [SPLIT MODE] 批次 ${batch + 1}/${totalBatches} 中断。已生成 ${allPrompts.length} 个，可恢复继续。`);
             return {
                 characterRefs,
                 prompts: allPrompts,
@@ -1861,7 +1859,7 @@ async function _runSplitMode(script, splitMode, apiKey, styleId, customStyle, na
     }
 
     if (allPrompts.length === 0) {
-        throw new Error('프롬프트 생성에 실패했습니다. 다시 시도해주세요.');
+        throw new Error('分镜提示词生成失败，请重试。');
     }
 
     return { characterRefs, prompts: allPrompts, splitMode, phase0SceneMap: scenes, musicOptions };
@@ -1879,7 +1877,7 @@ async function _resumeSplitMode(resumeState, existingPrompts, apiKey, onBatchPro
 
     const scenes = phase0SceneMap;
     if (!Array.isArray(scenes) || scenes.length === 0) {
-        throw new Error('Resume 실패: Phase 0 씬 맵이 없습니다.');
+        throw new Error('断点恢复失败：未找到前序分镜数据。');
     }
 
     const BATCH_MAX = 25;
@@ -1925,7 +1923,7 @@ async function _resumeSplitMode(resumeState, existingPrompts, apiKey, onBatchPro
             const validation = _validateBatchSceneIntegrity(batch, totalBatches, batchScenes, batchPrompts);
             const severity = _judgeValidationSeverity(validation, batchScenes.length);
             if (severity === 'MAJOR' || severity === 'CRITICAL') {
-                console.log(`⚠️ [SPLIT VALIDATION RESUME] Batch ${batch + 1} 개수 편차 ${severity}: 예상 ${batchScenes.length}개 → 반환 ${batchPrompts.length}개`);
+                console.log(`⚠️ [SPLIT VALIDATION RESUME] Batch ${batch + 1} 数量偏差 ${severity}: 预期 ${batchScenes.length}个 → 返回 ${batchPrompts.length}个`);
             }
             if (onBatchProgress) {
                 onBatchProgress('validation', batch + 1, totalBatches, null, null, {
@@ -3578,11 +3576,11 @@ async function _geminiApiCall(apiKey, prompt, maxOutputTokens = 16384) {
     } catch (e) {
         clearTimeout(timeout);
         if (e.name === 'AbortError') {
-            throw new Error('Gemini API 응답 시간 초과 (15분). 대본이 길면 나눠서 시도해보세요.');
+            throw new Error('AI API 响应超时 (15分钟)。建议精简剧本或分段重试。');
         }
         const msg = (e?.message || '').toLowerCase();
         if (msg.includes('failed to fetch') || msg.includes('network') || msg.includes('load failed')) {
-            throw new Error('네트워크 오류. 연결을 확인한 뒤 다시 시도해주세요.');
+            throw new Error('网络连接错误，请检查网络连接或代理设置后重试。');
         }
         throw e;
     }
@@ -3592,11 +3590,7 @@ async function _geminiApiCall(apiKey, prompt, maxOutputTokens = 16384) {
         const errorData = await response.json().catch(() => ({}));
         const apiMsg = (errorData.error?.message || '').toLowerCase();
         if (response.status === 429) {
-            // ★ 429 세분화 — "일일 쿼터 소진" vs "분당 레이트리밋"은 서로 다른 상황
-            //   Gemini API 에러 payload의 quotaId 확인:
-            //     - PerDay / PerMonth → 실제 쿼터 소진 (키 교체 or 다음날 대기 필요)
-            //     - PerMinute / PerHour → 레이트리밋 (수 초 ~ 수 분 대기로 해소)
-            //   구분 안 하면 일시 오류를 "키 소진"으로 오탐 → 유저에게 불필요한 키 교체 유도
+            // ★ 429 细分判断
             const violations = errorData.error?.details?.find(d =>
                 d['@type']?.includes('QuotaFailure'))?.violations || [];
             const quotaIds = violations.map(v => String(v.quotaId || '')).join(' ');
@@ -3605,18 +3599,15 @@ async function _geminiApiCall(apiKey, prompt, maxOutputTokens = 16384) {
             const isActualQuota = /PerDay|PerMonth|per day|per month|daily.*quota|daily.*limit/i.test(quotaIds + ' ' + rawMsg);
 
             if (isRateLimit && !isActualQuota) {
-                // 일시적 레이트리밋 — 재시도 유도 (상위 _is429Error에서 처리)
-                throw new Error('429_RATE_LIMIT: Gemini API 분당 레이트리밋. 잠시 후 다시 시도해주세요.');
+                throw new Error('429_RATE_LIMIT: API 每分钟调用速率限制，请稍等片刻后重试。');
             }
-            // quotaId 없거나 PerDay 명시 → 실제 쿼터 소진으로 판정 (보수적 기본값: 소진)
-            throw new Error('Gemini API 무료 사용량이 초과되었습니다. 한국시간 오후 5시에 초기화됩니다.');
+            throw new Error('API 免费调用额度已耗尽，请更换新的有效 API Key。');
         }
         if (response.status === 503 || response.status === 500 || response.status === 502 || response.status === 504) {
-            // ★ 5xx 서버 에러 — 일시적 과부하. 쿼터 소진 아님
-            throw new Error(`429_SERVER_BUSY: Gemini 서버 일시 과부하 (${response.status}). 잠시 후 재시도.`);
+            throw new Error(`429_SERVER_BUSY: 服务器暂时过载繁忙 (${response.status})，稍候自动重试。`);
         }
         if (response.status === 400 && /token|context|limit|exceeded|resource|invalid/i.test(apiMsg)) {
-            throw new Error('토큰 한도 초과. 대본 길이를 줄이거나 프롬프트 수를 낮춰 보세요.');
+            throw new Error('Token 长度超限。建议精简剧本长度或减少目标镜头数量。');
         }
         throw new Error(`Gemini API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
     }
@@ -3628,7 +3619,7 @@ async function _geminiApiCall(apiKey, prompt, maxOutputTokens = 16384) {
     if (!responseText) {
         const reason = candidate?.finishReason || 'UNKNOWN';
         if (reason === 'SAFETY') {
-            throw new Error('대본 내용이 안전 필터에 걸렸습니다. 대본을 수정해주세요.');
+            throw new Error('剧本内容触发了安全审查过滤器，请修改敏感词汇后重试。');
         }
         throw new Error(`Invalid response from Gemini API (finishReason: ${reason})`);
     }
@@ -4632,7 +4623,7 @@ function fallbackParseV3(text) {
     }
 
     if (prompts.length === 0) {
-        throw new Error('프롬프트 생성 실패, 다시 시도해주세요.');
+        throw new Error('提示词生成失败，请重试。');
     }
 
     return prompts;
@@ -4693,7 +4684,7 @@ function validateApiKey(apiKey) {
  */
 async function generateVideoPromptsFromGemini(script, imagePrompts, apiKey) {
     if (!imagePrompts || imagePrompts.length === 0) {
-        throw new Error('이미지 프롬프트가 없습니다.');
+        throw new Error('未提供图像提示词。');
     }
 
     // ★ 이미지 프롬프트 전체 전송 (200자 제한 제거)
@@ -4853,7 +4844,7 @@ function parseVideoPromptResponse(text, imagePrompts) {
     const expectedCount = imagePrompts.length;
     
     if (!text || text.trim().length === 0) {
-        const error = new Error('PARSE_FAILED:응답이 비어있습니다');
+        const error = new Error('PARSE_FAILED:AI响应内容为空');
         error.code = 'PARSE_FAILED';
         throw error;
     }
@@ -4898,7 +4889,7 @@ function parseVideoPromptResponse(text, imagePrompts) {
         const endIdx = cleanText.lastIndexOf(']');
         
         if (startIdx === -1 || endIdx <= startIdx) {
-            throw new Error('JSON 배열을 찾을 수 없습니다');
+            throw new Error('未能从 AI 响应中解析出有效的 JSON 列表');
         }
         
         let jsonStr = cleanText.substring(startIdx, endIdx + 1);
@@ -5053,8 +5044,8 @@ function parseVideoPromptResponse(text, imagePrompts) {
     } catch (e) {
     }
     
-    // 모든 시도 실패
-    const error = new Error('PARSE_FAILED:JSON 파싱에 실패했습니다. 이미지 프롬프트로 대체합니다.');
+    // 所有尝试均失败
+    const error = new Error('PARSE_FAILED:JSON 解析失败，已自动回退使用原始图像提示词。');
     error.code = 'PARSE_FAILED';
     throw error;
 }

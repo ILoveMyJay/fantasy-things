@@ -3,12 +3,21 @@ if(typeof console!=="undefined" && (typeof globalThis!=="undefined" && globalThi
 // CSP 때문에 inline script inject 불가 → 별도 파일로 분리
 
 // 준비 완료 신호
-window.dispatchEvent(new CustomEvent('__flowBridgeReady'));
+if (typeof window !== 'undefined') {
+  window.dispatchEvent(new CustomEvent('__flowBridgeReady'));
+}
+
+if (typeof window !== 'undefined' && !window.__flowBridgeInstalled) {
+window.__flowBridgeInstalled = true;
 
 const PROMPT_EDITOR_SELECTOR = '[contenteditable="true"][data-slate-editor="true"], .ProseMirror[contenteditable="true"]';
 
 function findPromptEditor() {
-  return document.querySelector(PROMPT_EDITOR_SELECTOR);
+  return document.querySelector(PROMPT_EDITOR_SELECTOR)
+    || document.querySelector('[contenteditable="true"][data-slate-editor="true"]')
+    || document.querySelector('.ProseMirror[contenteditable="true"]')
+    || document.querySelector('div[contenteditable="true"]')
+    || document.querySelector('[contenteditable="true"]');
 }
 
 function fillProseMirror(editor, text, replaceAll) {
@@ -151,7 +160,7 @@ window.addEventListener('__flowFillPrompt', (e) => {
 
   try {
     const editor = findPromptEditor();
-    if (!editor) throw new Error('에디터 없음');
+    if (!editor) throw new Error('未找到提示词输入框 (请确认处于 Flow 画板页面)');
 
     if (editor.matches('.ProseMirror')) {
       fillProseMirror(editor, text || '', replaceAll);
@@ -167,7 +176,7 @@ window.addEventListener('__flowFillPrompt', (e) => {
       if (fiber.stateNode?.editor) { slateEditor = fiber.stateNode.editor; break; }
       fiber = fiber.return;
     }
-    if (!slateEditor) throw new Error('Slate 인스턴스 없음');
+    if (!slateEditor) throw new Error('未找到 Slate 编辑器实例 (请点击输入框激活)');
 
     const beforeMeaningful = editorMeaningfulText(editor);
 
@@ -303,7 +312,7 @@ window.addEventListener('__flowStripMentionTriggerAt', () => {
   };
   try {
     const editor = findPromptEditor();
-    if (!editor) throw new Error('에디터 없음');
+    if (!editor) throw new Error('未找到提示词输入框');
     if (editor.matches('.ProseMirror')) {
       stripProseMirrorMentionTrigger(editor);
       setTimeout(() => {
@@ -320,7 +329,7 @@ window.addEventListener('__flowStripMentionTriggerAt', () => {
       if (fiber.stateNode?.editor) { slateEditor = fiber.stateNode.editor; break; }
       fiber = fiber.return;
     }
-    if (!slateEditor) throw new Error('Slate 인스턴스 없음');
+    if (!slateEditor) throw new Error('未找到 Slate 编辑器实例');
 
     stripMentionTriggerAts(slateEditor);
     setTimeout(() => {
@@ -380,3 +389,4 @@ window.addEventListener('__flowPrepareUploadInput', () => {
     emit(false, error.message);
   }
 });
+} // end __flowBridgeInstalled guard

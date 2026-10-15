@@ -1,0 +1,65 @@
+{
+  "manifest_version": 3,
+  "name": "FantasyFlowStudio - AI 批量生图与一键生视频制片厂",
+  "short_name": "FantasyFlowStudio",
+  "version": "1.0.0",
+  "description": "专为 Google Flow (flow.google.com) 打造的下一代电影级 AI 制片工作台：剧本分镜切分、角色一致性绑定、批量闭环渲染与一键图生视频流水线",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
+    "default_title": "打开 FantasyFlowStudio 侧边栏"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "tabs",
+    "activeTab",
+    "downloads",
+    "scripting",
+    "unlimitedStorage",
+    "debugger"
+  ],
+  "host_permissions": [
+    "*://flow.google.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://flow.google.com/*"
+      ],
+      "js": [
+        "core/bridge.js"
+      ],
+      "run_at": "document_end",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "*://flow.google.com/*"
+      ],
+      "js": [
+        "core/selectors.js",
+        "core/automation.js",
+        "core/flow-pipeline.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": false
+    }
+  ]
+}

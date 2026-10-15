@@ -3645,15 +3645,15 @@ function initControlHandlers() {
             numPrompts = null;  // Gemini가 Phase 0에서 결정
         }
 
-        // ─── DEBUG: API 호출 전 분할 미리보기 (테스트 후 제거) ───
-        console.group('🔍 [DEBUG] 프롬프트 생성 시작');
-        console.log(`선택된 프롬프트 수: ${numPrompts}`);
-        console.log(`대본 길이: ${script.length}자`);
-        console.log(`API 키: ${apiKey.slice(0,8)}...`);
+        // ─── DEBUG: API 调用前分块预览 ───
+        console.group('🔍 [DEBUG] 提示词生成开始');
+        console.log(`选定提示词数: ${numPrompts}`);
+        console.log(`剧本长度: ${script.length}字`);
+        console.log(`API 密钥: ${apiKey.slice(0,8)}...`);
         console.groupEnd();
         // ─── DEBUG END ───
 
-        // ★ 대본/가사 자동 백업 다운로드 (토큰 영향 없음, 클라이언트 파일 저장)
+        // ★ 剧本/歌词自动备份下载
         try {
             const projectName = APP.factory?.projectName || $('#controlProjectName')?.value?.trim() || 'my_project';
             const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -3670,9 +3670,9 @@ function initControlHandlers() {
                 filename,
                 folder
             }).catch(err => console.log('[SCRIPT BACKUP] sendMessage warning:', err?.message));
-            console.log(`📥 [SCRIPT BACKUP] 대본 자동 저장: ${folder}/${filename}`);
+            console.log(`📥 [SCRIPT BACKUP] 剧本自动保存: ${folder}/${filename}`);
         } catch (e) {
-            console.log('[SCRIPT BACKUP] 예외:', e);
+            console.log('[SCRIPT BACKUP] 异常:', e);
         }
 
         // 커스텀 스타일 → Gemini 프롬프트 (없으면 스타일 없음)
@@ -3799,7 +3799,7 @@ function initControlHandlers() {
             }
 
             if (userProvidedCharRefs) {
-                console.log(`🎨 [PRO 2.0] 사용자 캐릭터 ${userProvidedCharRefs.length}개 Gemini에 전달:`,
+                console.log(`🎨 [PRO 2.0] 用户自定义角色 ${userProvidedCharRefs.length} 个传递给 Gemini:`,
                     userProvidedCharRefs.map(r => r.code).join(', '));
             }
 
@@ -4539,9 +4539,9 @@ async function saveCharRefFromBase64(characterRefsArray, base64Images, opts = {}
         const safeName = (ref.name ?? code).replace(/\s/g, '');
         const filename = `${code}_a_${safeName}.jpg`;
         assets[code] = { filename, base64, name: ref.name ?? code };
-        console.log(`🔄 [REGEN SAVE] ${code} 이미지 교체 완료 → 썸네일 재렌더 + 다운로드`);
+        console.log(`🔄 [REGEN SAVE] ${code} 图片替换完成 → 重新渲染缩略图 + 下载`);
 
-        // ★ PRO 2.0: REGEN 성공 시 새 이미지를 프로젝트 폴더에 다운로드 (방어적)
+        // ★ PRO 2.0: REGEN 成功时下载新图像至项目文件夹
         try {
             const projectName = APP.factory?.projectName || $('#controlProjectName')?.value?.trim() || 'my_project';
             const downloadFolder = APP.settings?.downloadFolder || 'FlowStudioPro';
@@ -4554,7 +4554,7 @@ async function saveCharRefFromBase64(characterRefsArray, base64Images, opts = {}
             }).catch(err => console.log('[REGEN DOWNLOAD] sendMessage warning:', err?.message));
             console.log(`📥 [REGEN DOWNLOAD] ${downloadFolder}/${downloadFilename}`);
         } catch (e) {
-            console.log('[REGEN DOWNLOAD] 예외:', e);
+            console.log('[REGEN DOWNLOAD] 异常:', e);
         }
 
         // ★ PRO 2.0: REGEN 타임아웃 해제 (orphan 방지)
@@ -5034,7 +5034,7 @@ async function handleGenerateAllRefs() {
         });
         if (customCodes.size > 0) {
             chrome.storage.local.set({ characterRefAssets: APP.characterRefAssets }).catch(() => {});
-            console.log(`🎨 [PRO 2.0] 사용자 업로드 캐릭터 ${customCodes.size}개 재사용 (Flow 생성 스킵):`,
+            console.log(`🎨 [PRO 2.0] 用户上传角色 ${customCodes.size} 个复用 (跳过 Flow 生成):`,
                 [...customCodes].join(', '));
 
             // ★ PRO 2.0: 사용자 업로드 이미지도 다운로드 폴더에 저장
@@ -6436,7 +6436,7 @@ async function startGeneration(isRetry = false) {
             }
         });
         sceneItems = APP.queue.filter(q => q.type !== 'characterRef' && q.status === 'ready');
-        console.log('[REGEN] 전체 완료 후 재생성 — done/fail 항목을 ready로 리셋', { count: sceneItems.length });
+        console.log('[REGEN] 全部完成后重新生成 — 将 done/fail 项重置为 ready', { count: sceneItems.length });
     } else if (hasCompletedOrFailed) {
         // 일부만 완료/실패 + 아직 ready 남음 → 이어서 진행 (ready 항목만)
         sceneItems = readyItems;
@@ -6692,6 +6692,17 @@ async function preparePayloads(items) {
 }
 
 async function ensureContentScriptLoaded(tab) {
+    if (!tab?.id) return false;
+
+    // 无论如何优先注入 MAIN world 的 page-bridge.js
+    try {
+        await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            world: 'MAIN',
+            files: ['core/page-bridge.js']
+        });
+    } catch (_) {}
+
     // 1차 시도: PING으로 기존 Content Script 확인
     try {
         const response = await chrome.tabs.sendMessage(tab.id, { type: 'PING' });
@@ -6701,12 +6712,19 @@ async function ensureContentScriptLoaded(tab) {
     } catch (e) {
     }
 
-    // 2차 시도: Content Script 재주입 (Flow용 파일)
+    // 2차 시도: Content Script 재주입 (Flow용 파일 + MAIN world bridge)
     try {
         await chrome.scripting.executeScript({
             target: { tabId: tab.id },
             files: ['core/flow-selectors.js', 'core/flow-automation.js', 'core/filename.js', 'content-scripts/flow-content.js']
         });
+        try {
+            await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                world: 'MAIN',
+                files: ['core/page-bridge.js']
+            });
+        } catch (_) {}
         await new Promise(r => setTimeout(r, 1000));
 
         const response = await chrome.tabs.sendMessage(tab.id, { type: 'PING' });
@@ -6726,6 +6744,13 @@ async function ensureContentScriptLoaded(tab) {
             try {
                 const response = await chrome.tabs.sendMessage(tab.id, { type: 'PING' });
                 if (response?.alive) {
+                    try {
+                        await chrome.scripting.executeScript({
+                            target: { tabId: tab.id },
+                            world: 'MAIN',
+                            files: ['core/page-bridge.js']
+                        });
+                    } catch (_) {}
                     return true;
                 }
             } catch {
@@ -7795,8 +7820,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     }
                 }
             } catch (e) {
-                // ★ PRO 2.0: 에러 원인을 콘솔에 명확히 기록 (stack + 관련 상태)
-                console.log('[CHAR_REF_IMAGES_READY] 핸들러 예외:', e, {
+                // ★ PRO 2.0: 记录异常信息
+                console.log('[CHAR_REF_IMAGES_READY] 处理程序异常:', e, {
                     isSingleRegen,
                     regenCode: payload.regenCode,
                     base64Count: base64Images.length,
@@ -9633,7 +9658,7 @@ function showToast(message, type = '', duration = 3000) {
     if (type === 'error' && APP._toastDismissedAt) {
         const elapsed = Date.now() - APP._toastDismissedAt;
         if (elapsed < 30000) {
-            console.log(`[TOAST] error 토스트 차단 — 사용자 dismissal 후 ${Math.round(elapsed/1000)}s 경과 (30s 미만)`);
+            console.log(`[TOAST] error 提示拦截 — 用户关闭后经过 ${Math.round(elapsed/1000)}s (30s 内)`);
             return;
         }
     }
@@ -9683,8 +9708,8 @@ function showToast(message, type = '', duration = 3000) {
             //   → 30초 내 모든 후속 error 토스트 차단
             if (type === 'error') {
                 APP._toastDismissedAt = Date.now();
-                APP._unusualToastDismissedAt = Date.now();  // 하위 호환
-                console.log('[TOAST] error 토스트 X 클릭 — 30초간 동일 류 차단');
+                APP._unusualToastDismissedAt = Date.now();  // 兼容旧字段
+                console.log('[TOAST] 点击 error 提示 X 按钮 — 30 秒内拦截同类提示');
             }
         };
     }
@@ -9948,16 +9973,16 @@ async function generateVideoPrompts() {
         const errorCode = err.code || '';
 
         if (errorCode === 'API_QUOTA') {
-            toastMsg = 'API key quota exhausted — falling back to image prompts.';
+            toastMsg = 'API 密钥配额已耗尽 — 回退使用图像提示词。';
         } else if (errorCode === 'API_ERROR') {
-            toastMsg = `API error — falling back to image prompts. (${err.message.replace('API_ERROR:', '')})`;
+            toastMsg = `API 错误 — 回退使用图像提示词。(${err.message.replace('API_ERROR:', '')})`;
         } else if (errorCode === 'PARSE_FAILED') {
-            toastMsg = `JSON parse error — falling back to image prompts. (${err.message.replace('PARSE_FAILED:', '')})`;
+            toastMsg = `JSON 解析错误 — 回退使用图像提示词。(${err.message.replace('PARSE_FAILED:', '')})`;
         } else {
-            toastMsg = `Error occurred — falling back to image prompts. (${err.message})`;
+            toastMsg = `发生错误 — 回退使用图像提示词。(${err.message})`;
         }
 
-        showToast(toastMsg, 'warning', 0);  // ★ 수동 닫기만 가능 (duration=0)
+        showToast(toastMsg, 'warning', 0);
 
         // ★ 이미지 프롬프트 기반 기본 동영상 프롬프트 생성
         const imagePrompts = APP.prompts.slice(0, APP.factory.batch1Images.length);

@@ -38,7 +38,11 @@ function getFlowMediaName(src, tile) {
 }
 
 function findPromptEditor() {
-  return document.querySelector(PROMPT_EDITOR_SELECTOR);
+  return document.querySelector(PROMPT_EDITOR_SELECTOR)
+    || document.querySelector('[contenteditable="true"][data-slate-editor="true"]')
+    || document.querySelector('.ProseMirror[contenteditable="true"]')
+    || document.querySelector('div[contenteditable="true"]')
+    || document.querySelector('[contenteditable="true"]');
 }
 
 function isElementVisible(el) {
@@ -105,7 +109,7 @@ async function ensureImageFileInput(timeout = 5000) {
 let clickMutex = false;
 
 async function simulateClick(el) {
-  if (!el) throw new Error('simulateClick: 요소 없음');
+  if (!el) throw new Error('simulateClick: 目标元素不存在');
   if (clickMutex) await sleep(100);
   clickMutex = true;
 
@@ -132,8 +136,8 @@ async function simulateClick(el) {
     el.dispatchEvent(new MouseEvent('mouseup', opts));
 
     if (isSubmitBtn) {
-      // ★ v1.1.3: CDP 실제 마우스 클릭 + attach 후 좌표 재측정 (알림바 시프트 대응)
-      console.log(`[SUBMIT-DEBUG] CDP 클릭 시도: 원래좌표=(${Math.round(cx)},${Math.round(cy)})`);
+      // ★ v1.1.3: CDP 实际鼠标点击 + attach 后坐标重新测量
+      console.log(`[SUBMIT-DEBUG] CDP 点击尝试: 原始坐标=(${Math.round(cx)},${Math.round(cy)})`);
       const cdpResult = await new Promise((resolve) => {
         chrome.runtime.sendMessage({
           type: 'CDP_CLICK',
@@ -144,9 +148,9 @@ async function simulateClick(el) {
           resolve(r || { ok: false, error: 'no response' });
         });
       });
-      console.log('[SUBMIT-DEBUG] CDP 응답:', JSON.stringify(cdpResult));
+      console.log('[SUBMIT-DEBUG] CDP 响应:', JSON.stringify(cdpResult));
       if (!cdpResult.ok) {
-        console.warn('[SUBMIT] CDP 클릭 실패, native 폴백', cdpResult.error);
+        console.warn('[SUBMIT] CDP 点击失败，回退到原生点击', cdpResult.error);
         el.click();
       }
     } else {
@@ -226,36 +230,135 @@ async function waitForBridgeReady(timeout = 3000) {
     const ready = await new Promise((resolve) => {
       window.addEventListener('__flowFillPromptDone', () => resolve(true), { once: true });
       window.dispatchEvent(new CustomEvent('__flowFillPrompt', { detail: { text: '' } }));
-      setTimeout(() => resolve(false), 500);
+      setTimeout(() => resolve(false), 400);
     });
     if (ready) {
-      return;
+      return true;
+    }
+    // 未就绪时，主动请求 background 注入 page-bridge (自愈)
+    if (attempt === 1 || attempt === 3) {
+      try {
+        chrome.runtime.sendMessage({ type: 'ENSURE_PAGE_BRIDGE' });
+      } catch (_) {}
     }
     await sleep(200);
   }
+  return false;
 }
 
-// ★ Slate 에디터 — MAIN world page-bridge + 재시도 (첫 프롬프트 실패 방지)
+/**
+ * ★ Native input 兜底 — 当 MAIN world page-bridge 未响应时直接操作 contenteditable
+ */
+async function nativeFillEditor(editor, text, replaceAll = false) {
+  if (!editor) return false;
+  try {
+    editor.focus();
+    if (replaceAll) {
+      try {
+        document.execCommand('selectAll', false, null);
+        document.execCommand('delete', false, null);
+      } catch (_) {}
+    } else {
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } catch (_) {}
+    }
+
+    if (text) {
+      if (text === '@') {
+        try {
+          editor.dispatchEvent(new KeyboardEvent('keydown', {
+            key: '@', code: 'Digit2', keyCode: 50, which: 50,
+            bubbles: true, cancelable: true, composed: true
+          }));
+        } catch (_) {}
+      }
+      let ok = false;
+      try {
+        ok = document.execCommand('insertText', false, text);
+      } catch (_) {}
+
+      if (!ok) {
+        try {
+          editor.dispatchEvent(new InputEvent('beforeinput', {
+            inputType: 'insertText',
+            data: text,
+            bubbles: true,
+            cancelable: true,
+            composed: true
+          }));
+          editor.dispatchEvent(new InputEvent('input', {
+            inputType: 'insertText',
+            data: text,
+            bubbles: true,
+            composed: true
+          }));
+        } catch (_) {}
+      }
+      if (text === '@') {
+        try {
+          editor.dispatchEvent(new KeyboardEvent('keyup', {
+            key: '@', code: 'Digit2', keyCode: 50, composed: true
+          }));
+        } catch (_) {}
+      }
+    }
+    try {
+      editor.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+      editor.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+    } catch (_) {}
+    return true;
+  } catch (e) {
+    console.warn('[FLOW] nativeFillEditor 兜底失败:', e);
+    return false;
+  }
+}
+
+// ★ Slate 에디터 — MAIN world page-bridge + Native 兜底 + 재시도
 // options.replaceAll: true 시 기존 내용 전부 삭제 후 입력 (플레이스홀더 "무엇을..." 제거)
 async function fillPrompt(editor, text, retry = 3, options = {}) {
   for (let attempt = 0; attempt < retry; attempt++) {
     try {
-      await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('fillPrompt 타임아웃')), 5000);
-        window.addEventListener('__flowFillPromptDone', (e) => {
-          clearTimeout(timer);
-          e.detail.ok ? resolve() : reject(new Error(e.detail.error || '입력 실패'));
-        }, { once: true });
-        window.dispatchEvent(new CustomEvent('__flowFillPrompt', { detail: { text, replaceAll: !!options.replaceAll } }));
-      });
+      const ed = editor || findPromptEditor();
+      if (!ed) throw new Error('未找到提示词输入框 (请确认处于 Flow 画板页面)');
 
-      const filled = await waitForEditorFilled();
+      let bridgeSuccess = false;
+      try {
+        bridgeSuccess = await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('BRIDGE_TIMEOUT')), 2500);
+          window.addEventListener('__flowFillPromptDone', (e) => {
+            clearTimeout(timer);
+            e.detail.ok ? resolve(true) : reject(new Error(e.detail.error || '提示词输入失败'));
+          }, { once: true });
+          window.dispatchEvent(new CustomEvent('__flowFillPrompt', { detail: { text, replaceAll: !!options.replaceAll } }));
+        });
+      } catch (bridgeErr) {
+        console.warn(`[FLOW] page-bridge 提示词注入未响应 (${bridgeErr.message})，尝试自愈并使用 Native 输入兜底...`);
+        try {
+          chrome.runtime.sendMessage({ type: 'ENSURE_PAGE_BRIDGE' });
+        } catch (_) {}
+
+        await nativeFillEditor(ed, text, !!options.replaceAll);
+      }
+
+      if (!text) {
+        return;
+      }
+
+      const filled = await waitForEditorFilled(2000);
       if (filled) {
         return;
       }
-      throw new Error('에디터 미반영');
+      throw new Error('提示词未成功填入编辑器');
     } catch (err) {
-      if (attempt === retry - 1) throw err;
+      if (attempt === retry - 1) {
+        throw new Error(err.message === 'BRIDGE_TIMEOUT' ? '提示词注入超时 (请刷新 flow.google.com 页面后重试)' : err.message);
+      }
       await sleep(500);
     }
   }
@@ -384,7 +487,7 @@ async function submitWithVerification(submitBtn, options = {}) {
         editor.focus();
         editor.dispatchEvent(new Event('focus', { bubbles: true }));
         await sleep(300);
-        console.log('[SUBMIT-VERIFY] 3차 사전: 에디터 재포커스');
+        console.log('[SUBMIT-VERIFY] 第3次重试前置动作: 编辑器重新聚焦');
       }
     } else if (attempt === 4) {
       preAction = 'editor-reset';
@@ -392,121 +495,110 @@ async function submitWithVerification(submitBtn, options = {}) {
       if (editor) {
         const originalText = editor.textContent || '';
         if (originalText.trim()) {
-          console.log('[SUBMIT-VERIFY] 4차 사전: 에디터 빈→원복 사이클 시작');
-          // 빈 입력
+          console.log('[SUBMIT-VERIFY] 第4次重试前置动作: 开始编辑器清空→恢复循环');
+          // 空输入
           await new Promise(resolve => {
             const t = setTimeout(resolve, 1000);
             window.addEventListener('__flowFillPromptDone', () => { clearTimeout(t); resolve(); }, { once: true });
             window.dispatchEvent(new CustomEvent('__flowFillPrompt', { detail: { text: '', replaceAll: true } }));
           });
           await sleep(200);
-          // 원복
+          // 恢复
           await new Promise(resolve => {
             const t = setTimeout(resolve, 1500);
             window.addEventListener('__flowFillPromptDone', () => { clearTimeout(t); resolve(); }, { once: true });
             window.dispatchEvent(new CustomEvent('__flowFillPrompt', { detail: { text: originalText, replaceAll: true } }));
           });
           await sleep(300);
-          // submit 버튼 재발견 (DOM 재구성 가능성)
+          // 重新寻找 submit 按钮 (DOM 可能重构)
           const refreshedBtn = findSubmitButton();
           if (refreshedBtn) submitBtn = refreshedBtn;
-          console.log('[SUBMIT-VERIFY] 4차 사전: 에디터 리셋 완료');
+          console.log('[SUBMIT-VERIFY] 第4次重试前置动作: 编辑器重置完成');
         }
       }
     }
 
-    console.log(`[SUBMIT-VERIFY] 시도 ${attempt}/${maxAttempts} (CDP 클릭, pre=${preAction}) | 타일수=${tileCountBefore}`);
+    console.log(`[SUBMIT-VERIFY] 尝试 ${attempt}/${maxAttempts} (CDP 点击, pre=${preAction}) | 磁贴数=${tileCountBefore}`);
     await simulateClick(submitBtn);
 
-    // ★ v1.1.3: 클릭 직후 fast-fail 검증 — "Prompt must be provided" 감지 시 12s 대기 스킵
-    //   Flow가 명시적으로 거절 메시지 표시 시 = 진정한 거절 (silent 처리 케이스 아님)
-    //   → 즉시 다음 시도로 (전체 시간 절약)
-    //   ★ Boolean flag로 detection 결과 보존 (토스트가 사라진 후 재검사로 누락 방지)
+    // ★ v1.1.3: 点击后立即 fast-fail 校验 — 检测到 "Prompt must be provided" 时跳过 12s 等待
     let fastFailTriggered = false;
-    let fastFailChecks = 0;  // 진단용 — 몇 번 체크했는지
+    let fastFailChecks = 0;  // 诊断用 — 检查了多少次
     if (typeof window.detectPromptMustBeProvided === 'function') {
       const fastFailStart = Date.now();
-      // 검사 윈도우 2.5초로 확대 (Flow 알림 표시 지연 대응) + 100ms 폴링
+      // 检查窗口扩大至 2.5 秒 (应对 Flow 提示显示延迟) + 100ms 轮询
       while (Date.now() - fastFailStart < 2500) {
         fastFailChecks++;
         if (window.detectPromptMustBeProvided()) {
           fastFailTriggered = true;
-          console.log(`[SUBMIT-VERIFY] ★ 시도 ${attempt} fast-fail: "Prompt must be provided" 감지 (${fastFailChecks}회 체크 후) — 12s timeout 스킵`);
+          console.log(`[SUBMIT-VERIFY] ★ 尝试 ${attempt} fast-fail: 检测到 "Prompt must be provided" (检查 ${fastFailChecks} 次后) — 跳过 12s 超时`);
           break;
         }
         await sleep(100);
       }
       if (!fastFailTriggered) {
-        // 진단: 2.5초 동안 못 잡았음 → selector 문제 or 알림 표시 안 됨
-        console.log(`[SUBMIT-VERIFY] fast-fail 감지 안 됨 (${fastFailChecks}회 체크). Flow 알림 없음 OR selector 미스. waitForSubmitAccepted 정상 진행`);
+        // 诊断: 2.5 秒内未捕获到 → selector 问题或未显示提示
+        console.log(`[SUBMIT-VERIFY] 未检测到 fast-fail (检查 ${fastFailChecks} 次)。无 Flow 提示或 selector 未匹配。waitForSubmitAccepted 正常进行`);
       }
       if (fastFailTriggered) {
-        // ★ v1.1.3: fast-fail 후 5초 grace 검증 — Flow가 "경고 표시 + silent 처리" 패턴 대응
-        //   "Prompt must be provided" 표시되더라도 실제로는 Flow가 처리할 수도 있음
-        //   → 5초 더 기다려서 타일이 생기는지 확인
-        //   → 타일 생성됨: silent 성공 (재시도 스킵, 중복 방지)
-        //   → 타일 없음: 진짜 거절 (재시도)
-        console.log(`[SUBMIT-VERIFY] 시도 ${attempt} fast-fail 후 5초 grace 검증 (silent 처리 확인)`);
+        // ★ v1.1.3: fast-fail 后 5秒 grace 验证 — 应对 Flow "显示警告 + 静默处理" 模式
+        console.log(`[SUBMIT-VERIFY] 尝试 ${attempt} fast-fail 后 5秒 grace 验证 (确认静默处理)`);
         const fastFailGrace = await waitForSubmitAccepted({ tileCountBefore, timeout: 5000 });
         if (fastFailGrace.accepted) {
-          console.log(`[SUBMIT-VERIFY] ★ 시도 ${attempt} fast-fail 후 타일 감지 — 경고 표시됐지만 silent 처리됨 — 재시도 스킵 (중복 방지)`);
+          console.log(`[SUBMIT-VERIFY] ★ 尝试 ${attempt} fast-fail 后检测到磁贴 — 虽显示警告但已被静默处理 — 跳过重试 (防重复)`);
           return { success: true, attempts: attempt, signal: 'silent-after-fastfail', method: 'click', preAction };
         }
-        // 진짜 거절이면 backoff 짧게 + 다음 attempt로 (continue)
-        console.log(`[SUBMIT-VERIFY] 시도 ${attempt} fast-fail 후 타일 없음 — 진짜 거절로 판정, 재시도 진행`);
+        // 如果是真正被拒则短暂退避 + 进入下一个 attempt (continue)
+        console.log(`[SUBMIT-VERIFY] 尝试 ${attempt} fast-fail 后无磁贴 — 判定为真正被拒，继续重试`);
         if (attempt < maxAttempts) {
           await sleep(500);
           submitBtn = findSubmitButton();
           if (submitBtn) continue;
-          console.warn('[SUBMIT-VERIFY] fast-fail 후 버튼 소실');
+          console.warn('[SUBMIT-VERIFY] fast-fail 后按钮丢失');
           break;
         }
-        // 마지막 시도였으면 종료
+        // 达到最大重试次数则退出
         break;
       }
     } else {
-      console.warn('[SUBMIT-VERIFY] window.detectPromptMustBeProvided 함수 없음 — 확장 재로드 필요');
+      console.warn('[SUBMIT-VERIFY] window.detectPromptMustBeProvided 函数不存在 — 需要重新加载扩展');
     }
 
     const result = await waitForSubmitAccepted({ tileCountBefore, timeout: verifyTimeout });
-    console.log(`[SUBMIT-VERIFY] 시도 ${attempt} 결과:`, JSON.stringify(result));
+    console.log(`[SUBMIT-VERIFY] 尝试 ${attempt} 结果:`, JSON.stringify(result));
     if (result.accepted) {
       return { success: true, attempts: attempt, signal: result.signal, method: 'click', preAction };
     }
 
-    // ★ v1.1.3: timeout 직후 1차 grace 검증 — 폴링 보다 짧은 즉시 재확인
-    //   waitForSubmitAccepted 의 300ms 폴링이 타일 생성 시점 사이를 놓칠 수 있음
-    //   timeout 반환 직후 즉시 한 번 더 체크해서 미세한 boundary case 잡음
+    // ★ v1.1.3: 超时后立即进行第 1 次 grace 验证
     const postTimeoutTile = getFlowTiles().length;
     if (postTimeoutTile > tileCountBefore) {
-      console.log(`[SUBMIT-VERIFY] ★ 시도 ${attempt} timeout 직후 타일 감지 (${tileCountBefore}→${postTimeoutTile}) — 재시도 스킵`);
+      console.log(`[SUBMIT-VERIFY] ★ 尝试 ${attempt} 超时后立即检测到磁贴 (${tileCountBefore}→${postTimeoutTile}) — 跳过重试`);
       return { success: true, attempts: attempt, signal: 'post-timeout-tile', method: 'click', preAction };
     }
 
-    // ★ v1.1.3: 2차 extended grace — Flow가 느리게 처리하는 경우 추가 5초 대기
-    //   "Prompt must be provided" 알림과 함께 Flow가 silent 처리하는 케이스 대응
-    //   누적 DOM 부하 시 placeholder 생성이 12s 이상 걸릴 수 있음
-    console.log(`[SUBMIT-VERIFY] 시도 ${attempt} grace 5초 추가 대기 (중복 submit 방지)`);
+    // ★ v1.1.3: 第 2 次 extended grace — Flow 较慢时额外等待 5 秒
+    console.log(`[SUBMIT-VERIFY] 尝试 ${attempt} grace 额外等待 5 秒 (防止重复提交)`);
     const graceResult = await waitForSubmitAccepted({ tileCountBefore, timeout: 5000 });
     if (graceResult.accepted) {
-      console.log(`[SUBMIT-VERIFY] ★ 시도 ${attempt} grace 성공 감지 — 재시도 스킵`);
+      console.log(`[SUBMIT-VERIFY] ★ 尝试 ${attempt} grace 成功检测 — 跳过重试`);
       return { success: true, attempts: attempt, signal: 'grace-' + graceResult.signal, method: 'click', preAction };
     }
 
     if (attempt < maxAttempts) {
       const delay = backoffBase * Math.pow(backoffMultiplier, attempt - 1);
-      console.log(`[SUBMIT-VERIFY] 실패 — ${Math.round(delay)}ms 백오프 후 재시도`);
+      console.log(`[SUBMIT-VERIFY] 失败 — 退避等待 ${Math.round(delay)}ms 后重试`);
       await sleep(delay);
 
-      // ★ v1.1.3: 3차 backoff 후 안전망 — 위 grace로 못 잡은 늦은 처리 잡음
+      // ★ v1.1.3: 第 3 次 backoff 后安全网
       const finalTileCount = getFlowTiles().length;
       if (finalTileCount > tileCountBefore) {
-        console.log(`[SUBMIT-VERIFY] ★ 시도 ${attempt} 늦은 성공 감지 — backoff 후 타일 생성됨 (${tileCountBefore}→${finalTileCount}) — 재시도 스킵`);
+        console.log(`[SUBMIT-VERIFY] ★ 尝试 ${attempt} 检测到延迟成功 — 退避后磁贴已生成 (${tileCountBefore}→${finalTileCount}) — 跳过重试`);
         return { success: true, attempts: attempt, signal: 'late-tile', method: 'click', preAction };
       }
 
       submitBtn = findSubmitButton();
-      if (!submitBtn) { console.warn('[SUBMIT-VERIFY] 버튼 소실 — 중단'); break; }
+      if (!submitBtn) { console.warn('[SUBMIT-VERIFY] 按钮丢失 — 中止'); break; }
     }
   }
   return { success: false, attempts: maxAttempts, signal: 'exhausted' };
@@ -799,7 +891,7 @@ async function waitForGeneration(expectedCount, timeout = 300000) {
     await sleep(2000);
   }
 
-  throw new Error('TIMEOUT: 생성 시간 초과');
+  throw new Error('TIMEOUT: 媒体生成等待超时');
 }
 
 function parseGalleryUrls(expectedCount) {
@@ -841,6 +933,7 @@ if (typeof window !== 'undefined') {
   window.humanClick = humanClick;
   window.humanMoveTo = humanMoveTo;
   window.fillPrompt = fillPrompt;
+  window.nativeFillEditor = nativeFillEditor;
   window.stripMentionTriggerAt = stripMentionTriggerAt;
   window.waitForEditorFilled = waitForEditorFilled;
   window.waitForEditorEmpty = waitForEditorEmpty;

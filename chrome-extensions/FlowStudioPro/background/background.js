@@ -210,6 +210,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    // ★ 确保 MAIN world 的 page-bridge.js 动态注入 (自愈保障)
+    if (message.type === 'ENSURE_PAGE_BRIDGE') {
+        (async () => {
+            let tabId = sender.tab?.id || message.tabId;
+            if (!tabId) {
+                const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                tabId = activeTab?.id;
+            }
+            if (!tabId) {
+                sendResponse({ ok: false, error: 'no tab id' });
+                return;
+            }
+            try {
+                await chrome.scripting.executeScript({
+                    target: { tabId },
+                    world: 'MAIN',
+                    files: ['core/page-bridge.js']
+                });
+                console.log('[SW] 成功动态注入 page-bridge.js 到 tab', tabId);
+                sendResponse({ ok: true });
+            } catch (err) {
+                console.warn('[SW] 注入 page-bridge.js 失败:', err?.message);
+                sendResponse({ ok: false, error: err?.message });
+            }
+        })();
+        return true;
+    }
+
     // ★ v1.1.8 Tier1: CDP idle 마우스 무브 — 생성 대기 중 사람처럼 마우스 미세 이동
     //   reCAPTCHA v3 가 세션 전체 마우스 활동을 봄 → 대기 중에도 마우스 살려둠
     //   content script(STEP 16 폴링)에서 가끔 호출. isTrusted=true.
@@ -274,15 +302,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             const ox = jx > 0 ? (Math.floor(Math.random() * (jx * 2 + 1)) - jx) : 0;
                             const oy = jy > 0 ? (Math.floor(Math.random() * (jy * 2 + 1)) - jy) : 0;
                             fx = parsed.x + ox; fy = parsed.y + oy;
-                            console.log(`[CDP] 좌표 보정+지터: (${x},${y}) → 중앙(${parsed.x},${parsed.y}) → 클릭(${fx},${fy})`);
+                            console.log(`[CDP] 坐标修正+抖动: (${x},${y}) → 中心(${parsed.x},${parsed.y}) → 点击(${fx},${fy})`);
                         }
                     } catch (coordErr) {
-                        console.warn('[CDP] 좌표 재측정 실패, 원래 좌표 사용', coordErr?.message);
+                        console.warn('[CDP] 坐标重新测量失败，使用原始坐标', coordErr?.message);
                     }
                 }
-                // 사람 같은 마우스 이동 궤적
+                // 模拟人类鼠标移动轨迹
                 await _cdpHumanMouseMove(target, fx, fy);
-                console.log(`[CDP] 클릭 발사: (${fx},${fy})`);
+                console.log(`[CDP] 触发点击: (${fx},${fy})`);
                 await new Promise(r2 => setTimeout(r2, 40 + Math.random() * 120));
                 await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
                     type: 'mousePressed', x: fx, y: fy, button: 'left', clickCount: 1
@@ -293,7 +321,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 });
                 return { ok: true, corrected: (fx !== x || fy !== y), coords: { original: {x,y}, used: {x:fx,y:fy} } };
             });
-            if (!r.ok) console.error('[CDP] 클릭 오류:', r.error);
+            if (!r.ok) console.error('[CDP] 点击失败:', r.error);
             sendResponse(r);
         })();
         return true;

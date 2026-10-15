@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FantasyFlowStudio</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-logo">✨</div>
+        <div class="brand-meta">
+          <h1 class="brand-title">FantasyFlowStudio</h1>
+          <p class="brand-subtitle">Google Flow 批量生图与一键生视频制片厂</p>
+        </div>
+      </div>
+      <div class="connection-status" id="connectionStatus">
+        <span class="status-dot"></span>
+        <span class="status-text">检测 Flow 页面...</span>
+      </div>
+    </header>
+
+    <!-- Top Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-tab="tab-script">
+        <span class="tab-icon">🎬</span> AI 剧本制片厂
+      </button>
+      <button class="nav-tab" data-tab="tab-prompt-studio">
+        <span class="tab-icon">⚡</span> 自由批量生图
+      </button>
+      <button class="nav-tab" data-tab="tab-settings">
+        <span class="tab-icon">⚙️</span> 设置
+      </button>
+    </nav>
+
+    <!-- TAB 1: AI 剧本制片厂 (Wizard) -->
+    <section id="tab-script" class="tab-content active">
+      <!-- Wizard Step Indicator -->
+      <div class="wizard-stepper">
+        <div class="step-node active" data-step="1">
+          <div class="step-num">1</div>
+          <div class="step-name">剧本角色</div>
+        </div>
+        <div class="step-line"></div>
+        <div class="step-node" data-step="2">
+          <div class="step-num">2</div>
+          <div class="step-name">编排分镜</div>
+        </div>
+        <div class="step-line"></div>
+        <div class="step-node" data-step="3">
+          <div class="step-num">3</div>
+          <div class="step-name">批量生图</div>
+        </div>
+        <div class="step-line"></div>
+        <div class="step-node" data-step="4">
+          <div class="step-num">4</div>
+          <div class="step-name">一键视频</div>
+        </div>
+      </div>
+
+      <!-- Step 1: 剧本与角色 -->
+      <div id="step-panel-1" class="step-panel active">
+        <div class="card-section">
+          <div class="section-header">
+            <h3>剧本故事故事板</h3>
+            <button class="btn-text" id="btnLoadDemoScript">加载示例：新东京侦探艾伦</button>
+          </div>
+          <textarea id="scriptInput" class="custom-textarea" rows="5" placeholder="在此粘贴您的故事剧本、剧情大纲或小说片段..."></textarea>
+          <div class="action-bar">
+            <button class="btn-primary" id="btnAnalyzeCharacters">
+              <span>✨</span> AI 解析角色视觉 DNA
+            </button>
+          </div>
+        </div>
+
+        <div class="card-section" id="charactersContainerSection">
+          <div class="section-header">
+            <h3>提取的角色设定 (CCR 双锚点一致性)</h3>
+            <span class="badge" id="charCountBadge">0 个角色</span>
+          </div>
+          <p class="section-desc">已成功提炼剧本角色视觉 DNA。您可点击下方按钮一键全自动向 Flow 建库（全自动渲染四面定妆图，并在随机延迟后自动为角色正名），也可单独操作单个角色。</p>
+          
+          <div class="action-bar" style="margin-top:2px;">
+            <button class="btn-primary" id="btnAutoBuildAllCharacters" style="width:100%;background:linear-gradient(135deg, #4f46e5, #06b6d4);">
+              <span>⚡</span> 一键全自动建库：渲染定妆图 + 随机间隔更名
+            </button>
+          </div>
+
+          <div class="characters-list" id="charactersList">
+            <div class="empty-placeholder">暂无角色，请点击上方解析剧本</div>
+          </div>
+        </div>
+
+        <div class="wizard-footer">
+          <button class="btn-success btn-large" id="btnGoToStep2">
+            下一步：编排分镜头清单 ➔
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2: 编排分镜清单 -->
+      <div id="step-panel-2" class="step-panel">
+        <div class="card-section">
+          <div class="section-header">
+            <h3>电影分镜头编排</h3>
+            <div class="shot-count-selector">
+              <label>镜头数量：</label>
+              <select id="shotCountSelect" class="custom-select">
+                <option value="4" selected>4 镜头 (经典电影四幕)</option>
+                <option value="6">6 镜头</option>
+                <option value="8">8 镜头</option>
+                <option value="12">12 镜头</option>
+              </select>
+            </div>
+          </div>
+          <div class="action-bar">
+            <button class="btn-primary" id="btnGenerateStoryboard">
+              <span>🎬</span> 自动切分电影分镜
+            </button>
+          </div>
+        </div>
+
+        <div class="card-section">
+          <div class="section-header">
+            <h3>已生成的分镜清单</h3>
+            <span class="badge" id="shotsCountBadge">0 个分镜</span>
+          </div>
+          <div class="shots-list" id="shotsList">
+            <div class="empty-placeholder">暂无分镜，请点击上方按钮生成</div>
+          </div>
+        </div>
+
+        <div class="wizard-footer space-between">
+          <button class="btn-secondary" id="btnBackToStep1">⬅ 返回角色设定</button>
+          <button class="btn-success btn-large" id="btnGoToStep3">
+            下一步：前往批量生图闭环 ➔
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 3: 批量生图监视器 -->
+      <div id="step-panel-3" class="step-panel">
+        <div class="card-section monitor-card">
+          <div class="monitor-header">
+            <div class="monitor-title-group">
+              <span class="monitor-badge" id="imageBatchBadge">待机</span>
+              <h3 id="imageBatchTitle">批量生图闭环流水线</h3>
+            </div>
+            <div class="monitor-stats" id="imageBatchStats">0 / 0</div>
+          </div>
+
+          <div class="progress-track">
+            <div class="progress-bar" id="imageProgressBar" style="width: 0%;"></div>
+          </div>
+          <div class="monitor-status-text" id="imageBatchStatusText">就绪：点击下方按钮开始向 Google Flow 批量提交分镜渲染</div>
+
+          <div class="control-btn-group">
+            <button class="btn-primary btn-large" id="btnStartImageBatch">
+              <span>🚀</span> 开始批量生图
+            </button>
+            <button class="btn-secondary" id="btnPauseImageBatch" disabled>
+              <span>⏸</span> 暂停
+            </button>
+            <button class="btn-danger" id="btnStopImageBatch" disabled>
+              <span>⏹</span> 停止
+            </button>
+          </div>
+        </div>
+
+        <!-- 渲染产物画廊 -->
+        <div class="card-section">
+          <div class="section-header">
+            <h3>已完成的分镜图片 (Keyframes)</h3>
+            <span class="badge" id="galleryCountBadge">0 张</span>
+          </div>
+          <div class="gallery-grid" id="imageGalleryGrid">
+            <div class="empty-placeholder">渲染开始后，分镜产物将在此实时展现</div>
+          </div>
+        </div>
+
+        <!-- 完成后的一键转视频快捷入口 -->
+        <div class="card-section highlight-card" id="allImagesDoneCard" style="display: none;">
+          <div class="highlight-content">
+            <div class="highlight-icon">🎬</div>
+            <div>
+              <h4 class="highlight-title">所有分镜图片已全部生成完毕！</h4>
+              <p class="highlight-desc">以分镜图作为首帧 (Start Frame)，即刻一键渲染电影级动态视频</p>
+            </div>
+          </div>
+          <button class="btn-success btn-large" id="btnGoToStep4">
+            进入一键生视频流水线 ➔
+          </button>
+        </div>
+
+        <div class="wizard-footer space-between">
+          <button class="btn-secondary" id="btnBackToStep2">⬅ 返回修改分镜</button>
+          <button class="btn-outline" id="btnDirectToStep4">直接前往视频步骤 ➔</button>
+        </div>
+      </div>
+
+      <!-- Step 4: 一键图生视频 (Veo) -->
+      <div id="step-panel-4" class="step-panel">
+        <div class="card-section monitor-card">
+          <div class="monitor-header">
+            <div class="monitor-title-group">
+              <span class="monitor-badge video-badge" id="videoBatchBadge">待机</span>
+              <h3 id="videoBatchTitle">一键批量图生视频流水线 (Veo)</h3>
+            </div>
+            <div class="monitor-stats" id="videoBatchStats">0 / 0</div>
+          </div>
+
+          <div class="progress-track">
+            <div class="progress-bar video-progress" id="videoProgressBar" style="width: 0%;"></div>
+          </div>
+          <div class="monitor-status-text" id="videoBatchStatusText">流水线将自动将步骤3的每一张分镜图片作为首帧，并附加电影运镜动力学提示词生成 Veo 视频。</div>
+
+          <div class="control-btn-group">
+            <button class="btn-success btn-large" id="btnStartVideoBatch">
+              <span>🎥</span> 开始批量图生视频渲染
+            </button>
+            <button class="btn-secondary" id="btnPauseVideoBatch" disabled>
+              <span>⏸</span> 暂停
+            </button>
+            <button class="btn-danger" id="btnStopVideoBatch" disabled>
+              <span>⏹</span> 停止
+            </button>
+          </div>
+        </div>
+
+        <div class="card-section">
+          <div class="section-header">
+            <h3>已渲染的视频片段</h3>
+            <span class="badge" id="videoGalleryCountBadge">0 个视频</span>
+          </div>
+          <div class="video-gallery-grid" id="videoGalleryGrid">
+            <div class="empty-placeholder">视频渲染完成后将自动展示并下载</div>
+          </div>
+        </div>
+
+        <div class="wizard-footer">
+          <button class="btn-secondary" id="btnBackToStep3">⬅ 返回分镜生图</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: 自由批量生图工坊 (Prompt Studio) -->
+    <section id="tab-prompt-studio" class="tab-content">
+      <div class="card-section">
+        <div class="section-header">
+          <h3>自由批量提示词输入</h3>
+          <span class="hint-text">每行一条提示词，自动连续提交</span>
+        </div>
+        <textarea id="rawPromptsInput" class="custom-textarea" rows="8" placeholder="Neo-Tokyo rainy night street, cinematic neon reflections, 8k&#10;Detective Allen entering cyberpunk bar, warm holographic light, 4k&#10;Macro shot of cybernetic glowing memory chip on counter"></textarea>
+
+        <div class="studio-options">
+          <div class="option-item">
+            <label>间隔时间 (毫秒)：</label>
+            <input type="number" id="promptDelayInput" class="custom-input" value="3500" min="1000" step="500">
+          </div>
+          <div class="option-item">
+            <label>自动下载保存：</label>
+            <input type="checkbox" id="promptAutoDownload" checked>
+          </div>
+        </div>
+
+        <div class="action-bar">
+          <button class="btn-primary btn-large" id="btnStartRawBatch">
+            <span>🚀</span> 立即开始批量提交
+          </button>
+          <button class="btn-danger" id="btnStopRawBatch" disabled>
+            <span>⏹</span> 停止
+          </button>
+        </div>
+      </div>
+
+      <div class="card-section">
+        <div class="section-header">
+          <h3>执行实时日志</h3>
+          <button class="btn-text" id="btnClearLogs">清空</button>
+        </div>
+        <div class="log-console" id="logConsole">
+          <div class="log-line info">等待任务开始...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: 设置 (Settings) -->
+    <section id="tab-settings" class="tab-content">
+      <div class="card-section">
+        <div class="section-header">
+          <h3>AI 编剧与导演模型配置</h3>
+          <span class="badge" style="color:var(--accent-cyan);border-color:var(--accent-cyan);">支持第三方/本地/Gemini</span>
+        </div>
+        <p class="section-desc">支持全系 OpenAI 兼容第三方模型 (DeepSeek / 硅基流动 / ChatGPT / Kimi / 通义千问 / OpenRouter / 本地 Ollama) 与 Google Gemini 官方模型。</p>
+
+        <div class="form-group">
+          <label>快速预设：</label>
+          <select id="selectPreset" class="custom-select">
+            <option value="custom">⚙️ 自定义配置</option>
+            <option value="deepseek" selected>🐳 DeepSeek 官方 (api.deepseek.com / deepseek-chat)</option>
+            <option value="siliconflow">⚡ 硅基流动 SiliconFlow (api.siliconflow.cn / DeepSeek-V3)</option>
+            <option value="openai">🤖 OpenAI 官方 (api.openai.com / gpt-4o)</option>
+            <option value="gemini">✨ Google Gemini 官方 (gemini-3.8-flash)</option>
+            <option value="openrouter">🌐 OpenRouter (openrouter.ai / deepseek/deepseek-chat)</option>
+            <option value="ollama">💻 本地 Ollama (localhost:11434 / qwen2.5)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>接口协议类型：</label>
+          <select id="selectApiProvider" class="custom-select">
+            <option value="openai" selected>OpenAI 兼容协议 (DeepSeek / ChatGPT / 硅基流动 / Kimi / Qwen / OpenRouter 等)</option>
+            <option value="gemini">Google Gemini 官方协议</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>接口地址 (API Base URL)：</label>
+          <input type="text" id="inputApiBaseUrl" class="custom-input" placeholder="如 https://api.deepseek.com/v1" value="https://api.deepseek.com/v1">
+        </div>
+
+        <div class="form-group">
+          <label>API Key：</label>
+          <div class="password-input-group">
+            <input type="password" id="inputApiKey" class="custom-input" placeholder="输入对应厂商的 API Key (如 sk-... 或 AIzaSy...)">
+            <button class="btn-icon" id="btnToggleApiKey">👁</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>模型名称 (Model)：</label>
+          <input type="text" id="inputModelName" class="custom-input" placeholder="输入模型名称 (如 deepseek-chat 或 gemini-3.8-flash)" list="modelSuggestions" value="deepseek-chat">
+          <datalist id="modelSuggestions">
+            <option value="deepseek-chat">DeepSeek-V3 官方 (推荐/极快/极便宜)</option>
+            <option value="deepseek-reasoner">DeepSeek-R1 深度推理</option>
+            <option value="deepseek-ai/DeepSeek-V3">硅基流动 DeepSeek-V3</option>
+            <option value="gemini-3.8-flash">Google Gemini 3.8 Flash (最新推荐)</option>
+            <option value="gemini-3.8-pro">Google Gemini 3.8 Pro 深度思考</option>
+            <option value="gpt-4o">OpenAI GPT-4o 顶尖画质理解</option>
+            <option value="gpt-4o-mini">OpenAI GPT-4o-mini 轻量极速</option>
+            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+            <option value="qwen-plus">通义千问 Qwen Plus</option>
+            <option value="moonshot-v1-8k">月之暗面 Kimi</option>
+          </datalist>
+        </div>
+
+        <div class="test-connection-bar">
+          <button class="btn-secondary" id="btnTestApiConnection">
+            <span>⚡</span> 测试模型连接
+          </button>
+          <span id="testConnectionStatus" class="test-connection-status"></span>
+        </div>
+      </div>
+
+      <div class="card-section">
+        <div class="section-header">
+          <h3>制片项目设置</h3>
+        </div>
+        <div class="form-group">
+          <label>项目归档子目录名：</label>
+          <input type="text" id="inputProjectTitle" class="custom-input" value="FantasyFlowStudio">
+        </div>
+        <div class="form-group">
+          <label>画幅比例：</label>
+          <select id="selectAspectRatio" class="custom-select">
+            <option value="16:9" selected>16:9 (电影宽画幅)</option>
+            <option value="9:16">9:16 (竖屏短视频)</option>
+            <option value="1:1">1:1 (正方形)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="action-bar">
+        <button class="btn-primary btn-large" id="btnSaveSettings">保存设置</button>
+        <button class="btn-danger btn-outline" id="btnResetProject">重置当前项目数据</button>
+      </div>
+    </section>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toastContainer"></div>
+  </div>
+
+  <script src="storage.js"></script>
+  <script src="gemini.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

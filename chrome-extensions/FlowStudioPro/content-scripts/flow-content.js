@@ -441,7 +441,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
       if (btn) return btn;
       await new Promise(r => setTimeout(r, 100));
     }
-    throw new Error('[FLOW] 새 프로젝트 버튼 타임아웃 (10초 경과)');
+    throw new Error('[FLOW] 新建项目画板按钮等待超时 (超过10秒)');
   }
 
   /**
@@ -576,7 +576,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
       await sleep(500);
     }
 
-    throw new Error('[VIDEO] ❌ ⋯ 메뉴 열기 실패 (hover + 우클릭 모두 실패)');
+    throw new Error('[VIDEO] 快捷操作菜单打开失败 (鼠标悬停及右键点击均失败)');
   }
 
   async function openDownloadSubmenu() {
@@ -585,7 +585,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
         .find(el => el.getAttribute('aria-haspopup') === 'menu');
 
       if (!downloadItem) {
-        log('VIDEO', `다운로드 menuitem 없음 — 재시도 ${attempt + 1}/3`);
+        log('VIDEO', `下载 menuitem 未找到 — 重试 ${attempt + 1}/3`);
         await sleep(500);
         continue;
       }
@@ -593,7 +593,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
       const r = downloadItem.getBoundingClientRect();
       const cx = r.left + r.width / 2;
       const cy = r.top + r.height / 2;
-      log('VIDEO', `다운로드 클릭 좌표: (${Math.round(cx)}, ${Math.round(cy)})`);
+      log('VIDEO', `下载点击坐标: (${Math.round(cx)}, ${Math.round(cy)})`);
 
       await humanMoveTo(downloadItem);  // ★ v1.1.8 Tier1-A
       downloadItem.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: cx, clientY: cy }));
@@ -605,15 +605,15 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
         .some(el => el.textContent?.includes?.('1080p'));
 
       if (has1080) {
-        log('VIDEO', '서브메뉴 열림');
+        log('VIDEO', '子菜单已展开');
         return;
       }
 
-      log('VIDEO', `서브메뉴 미열림 — 재시도 ${attempt + 1}/3`);
+      log('VIDEO', `子菜单未展开 — 重试 ${attempt + 1}/3`);
       await sleep(500);
     }
 
-    throw new Error('[VIDEO] ❌ 다운로드 서브메뉴 열기 실패');
+    throw new Error('[VIDEO] 下载子菜单打开失败');
   }
 
   /**
@@ -1324,11 +1324,11 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
     }
     const userOC = Math.max(1, Math.min(4, Number(s.outputCount) || 1));
     const outputTab = findVisibleChoiceByExactText(`x${userOC}`) ?? document.querySelector(`[aria-controls$="-content-${userOC}"][role="tab"]`) ?? document.querySelector(`[aria-label="x${userOC}"][role="tab"]`) ?? document.querySelector(`button[id*="trigger-${userOC}"]`);
-    if (!outputTab) throw new Error(`[VIDEO] x${userOC} 탭 없음`);
+    if (!outputTab) throw new Error(`[VIDEO] 未找到 x${userOC} 数量标签`);
     await simulateClick(outputTab);
     await sleep(300);
     const modelDropdownBtn = findModelDropdownBtn();
-    if (!modelDropdownBtn) throw new Error('[VIDEO] 모델 드롭다운 없음');
+    if (!modelDropdownBtn) throw new Error('[VIDEO] 未找到模型下拉菜单按钮');
     await simulateClick(modelDropdownBtn);
     await sleep(500);
     const videoModel = s.flowVideoModel || s.model || 'Veo 3.1 Lite';
@@ -1451,12 +1451,12 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
     }
     const assets = await resolveI2vAssetFiles(payload, promptIndex);
     if (!assets.length) {
-      throw new Error(`[IMG2VID] 이미지 ${promptIndex + 1} 데이터 없음`);
+      throw new Error(`[IMG2VID] 未找到提示词 #${promptIndex + 1} 的图像素材数据`);
     }
     log('IMG2VID', `${label} asset ${assets.length}개 첨부 시작`);
     const ok = await uploadAndAttachI2vAssets(assets, label);
     if (!ok) {
-      throw new Error(`[IMG2VID] 이미지 ${promptIndex + 1} 첨부 실패`);
+      throw new Error(`[IMG2VID] 提示词 #${promptIndex + 1} 的图像素材上传失败`);
     }
     return result;
   }
@@ -1517,65 +1517,65 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
         // ★ v1.1.8 진단: 입력 후 에디터에 텍스트가 실제 반영됐는지 확인 ("Prompt must be provided" 원인 추적)
         const _edAfter = document.querySelector(PROMPT_EDITOR_SELECTOR)?.textContent?.trim() || '';
         log('IMG2VID', `프롬프트 입력 검증`, {
-          입력시도: fullPromptText.slice(0, 40),
-          에디터실제: _edAfter.slice(0, 40),
-          반영됨: _edAfter.length > 0,
-          이미지카드: document.querySelectorAll('[contenteditable="true"] img, [data-slate-editor="true"] img').length
+          尝试输入: fullPromptText.slice(0, 40),
+          编辑器实际: _edAfter.slice(0, 40),
+          已生效: _edAfter.length > 0,
+          图片卡片数: document.querySelectorAll('[contenteditable="true"] img, [data-slate-editor="true"] img').length
         });
-        // ★ v1.1.8: 텍스트 미반영 시 재입력 1회 (이미지 첨부로 에디터 selection 깨진 경우 복구)
+        // ★ v1.1.8: 文本未生效时重新输入 1 次 (附件可能破坏编辑器选区)
         if (_edAfter.length === 0) {
-          log('IMG2VID', `⚠️ 프롬프트 미반영 — 에디터 포커스 후 재입력`);
+          log('IMG2VID', `⚠️ 提示词未生效 — 聚焦编辑器后重新输入`);
           try { editor.focus(); editor.click(); } catch (_) {}
           await sleep(gaussianDelay(300, 600));
           if (promptFilledInline && payloads?.[i]) await fillImageGenPrompt(payloads[i], fullPromptText, `[${i + 1}/${total}]`);
           else await fillPrompt(editor, fullPromptText, 3);
           const _edRetry = document.querySelector(PROMPT_EDITOR_SELECTOR)?.textContent?.trim() || '';
-          log('IMG2VID', `프롬프트 재입력 결과`, { 반영됨: _edRetry.length > 0, preview: _edRetry.slice(0, 40) });
+          log('IMG2VID', `提示词重新输入结果`, { 生效: _edRetry.length > 0, preview: _edRetry.slice(0, 40) });
         }
         await waitForSubmitEnabled();
         const hasButton = await checkSubmitButtonWithRetry();
         let submitBtn = hasButton ? findSubmitButton() : null;
-        // ★ v1.1.8: 크레딧 소진 텍스트 팝업(부족/소진)이 떠 있으면 버튼 유무와 무관하게 소진으로 분기 (헛클릭 방지)
+        // ★ v1.1.8: 若出现算力耗尽弹窗，无论按钮是否存在均视为额度耗尽
         if (submitBtn && detectCreditExhausted()) {
-          log('VIDEO', '크레딧 소진 팝업 감지 — 제출 중단');
+          log('VIDEO', '检测到算力耗尽弹窗 — 提交中断');
           submitBtn = null;
         }
         if (!submitBtn) {
-          log('VIDEO', '❌ 생성 버튼 없음 — 크레딧 소진');
+          log('VIDEO', '❌ 未找到生成按钮 — 算力已耗尽');
           safeSendMessage({ type: 'CREDIT_EXHAUSTED', data: { source: 'VIDEO' } }).catch(() => {});
           triggerAutoPause('CREDIT_EXHAUSTED');
           const payloadMinPause = minifyVideoPayloadsForResume(payloads, settings);
           const promptsCleanPause = videoPrompts || prompts;
           const settingsMinPause = minifyVideoSettingsForResume(settings);
           const submitBtnNullData = { index: i, prompts: promptsCleanPause, payloads: payloadMinPause, settings: settingsMinPause, projectName, total, hadSubmitted: false };
-          console.log('[DEBUG] SAVE_RESUME 호출 시작 (submitBtn null, runVideoPipeline)');
+          console.log('[DEBUG] SAVE_RESUME 调用开始 (submitBtn null, runVideoPipeline)');
           safeSendMessage({ type: 'SAVE_RESUME', data: submitBtnNullData }, (r) => {
-            if (chrome.runtime.lastError) log('VIDEO', 'SAVE_RESUME 실패', chrome.runtime.lastError);
-            else if (!r?.success) log('VIDEO', 'SAVE_RESUME 실패', r?.error);
+            if (chrome.runtime.lastError) log('VIDEO', 'SAVE_RESUME 失败', chrome.runtime.lastError);
+            else if (!r?.success) log('VIDEO', 'SAVE_RESUME 失败', r?.error);
           });
-          console.log('[DEBUG] SAVE_RESUME 호출 완료 (submitBtn null, runVideoPipeline)');
+          console.log('[DEBUG] SAVE_RESUME 调用完成 (submitBtn null, runVideoPipeline)');
           await waitWhilePaused();
           submitBtn = findSubmitButton();
           if (!submitBtn) {
-            log('VIDEO', '재개 후에도 생성 버튼 없음 — 폴백: 실패 처리 후 다음 비디오 진행');
-            throw new Error('[VIDEO] ❌ 생성 버튼 없음');  // catch → failedPromptIndices.push(i), continue
+            log('VIDEO', '恢复后仍未找到生成按钮 — 记录失败并继续后续生成');
+            throw new Error('[VIDEO] 未找到视频生成提交按钮');  // catch → failedPromptIndices.push(i), continue
           }
         }
         const videoSubmitResult = await submitWithVerification(submitBtn, {
           maxAttempts: 3, verifyTimeout: 15000, backoffBase: 2000
         });
-        log('VIDEO', `프롬프트 ${i + 1} 제출 검증`, videoSubmitResult);
+        log('VIDEO', `提示词 #${i + 1} 提交验证`, videoSubmitResult);
         if (!videoSubmitResult.success) {
           // ★ v1.1.8: 제출 실패 원인이 크레딧 소진(클릭 시 팝업)이면 재시도/다음프롬프트로 가지 말고 즉시 크레딧 소진 처리
           if (detectCreditExhausted()) {
-            log('VIDEO', '❌ 제출 실패 — 크레딧 소진 팝업 감지, 파이프라인 중단');
+            log('VIDEO', '❌ 提交失败 — 检测到算力额度耗尽弹窗，中断流水线');
             safeSendMessage({ type: 'CREDIT_EXHAUSTED', data: { source: 'VIDEO' } }).catch(() => {});
             triggerAutoPause('CREDIT_EXHAUSTED');
             failedPromptIndices.push(i);
             failCount++;
             break;  // for 루프 종료 — 모달 재오픈 방지
           }
-          throw new Error(`[VIDEO] 제출 실패 (${i + 1}번째) — 클릭 미등록`);
+          throw new Error(`[VIDEO] 视频提交失败 (第 ${i + 1} 个) — 点击未成功注册`);
         }
         if (typeof sendProgress === 'function') {
           sendProgress({
@@ -1594,7 +1594,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
         const completedTile = await waitForVideoSDComplete();
         if (!completedTile) {
           if (controlState === 'PAUSED') {
-            log('VIDEO', '크레딧 소진 — 파이프라인 중단');
+            log('VIDEO', '算力已耗尽 — 流水线中止');
             failedPromptIndices.push(i);
             failCount++;
             const pauseFails = [...failedPromptIndices];
@@ -1622,20 +1622,20 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
             const promptsClean = videoPrompts || prompts;
             const settingsMin = minifyVideoSettingsForResume(settings);
             const pauseResumeData = { index: i, prompts: promptsClean, payloads: payloadMin, settings: settingsMin, projectName, total, hadSubmitted: true };
-            console.log('[DEBUG] SAVE_RESUME 호출 시작 (runVideoPipeline)');
+            console.log('[DEBUG] SAVE_RESUME 调用开始 (runVideoPipeline)');
             safeSendMessage({ type: 'SAVE_RESUME', data: pauseResumeData }, (r) => {
-              if (chrome.runtime.lastError) log('VIDEO', 'SAVE_RESUME 실패', chrome.runtime.lastError);
-              else if (!r?.success) log('VIDEO', 'SAVE_RESUME 실패', r?.error);
+              if (chrome.runtime.lastError) log('VIDEO', 'SAVE_RESUME 失败', chrome.runtime.lastError);
+              else if (!r?.success) log('VIDEO', 'SAVE_RESUME 失败', r?.error);
               else {
                 chrome.storage.local.get('videoPipelineResume', (s) => {
-                  console.log('[DEBUG runVideoPipeline] SAVE_RESUME 직후 storage 확인:', s);
+                  console.log('[DEBUG runVideoPipeline] SAVE_RESUME 之后 storage 确认:', s);
                 });
               }
             });
-            console.log('[DEBUG] SAVE_RESUME 호출 완료 (runVideoPipeline)');
+            console.log('[DEBUG] SAVE_RESUME 调用完成 (runVideoPipeline)');
             break;
           }
-          throw new Error(`[VIDEO] ❌ SD 생성 타임아웃 (${i + 1}번째)`);
+          throw new Error(`[VIDEO] 视频生成等待超时 (第 ${i + 1} 个)`);
         }
         await waitWhilePaused();
         const payload = payloads?.[i] || {};
@@ -1873,7 +1873,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
       const submitReady = await waitForSubmitEnabled();
       if (!submitReady) log('REGEN', 'submit 버튼 활성화 타임아웃');
       const submitBtn = findSubmitButton();
-      if (!submitBtn) throw new Error('REGEN: 생성 버튼 없음');
+      if (!submitBtn) throw new Error('重新生成: 未找到生成提交按钮');
       const regenSubmitResult = await submitWithVerification(submitBtn, {
         maxAttempts: 2, verifyTimeout: 12000
       });
@@ -2030,10 +2030,10 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
         fileInput.dispatchEvent(new Event('change', { bubbles: true }));
         // ★ 초기 업로드 간격도 정규분포 (2.8~4.2초, 기존 고정 3.5초 수준)
         const perImageDelay = gaussianDelay(CHAR_REF_PER_IMAGE_MS_MIN, CHAR_REF_PER_IMAGE_MS_MAX);
-        console.log(`[CHAR_REF] ${code} (${i + 1}/${entries.length}) 첨부 → ${perImageDelay}ms 대기`);
+        console.log(`[CHAR_REF] 附加 ${code} (${i + 1}/${entries.length}) → 等待 ${perImageDelay}ms`);
         await sleepAtLeast(perImageDelay, startTime);
       }
-      console.log(`[CHAR_REF] ${Object.keys(characterRefAssets).length}장 업로드 완료`);
+      console.log(`[CHAR_REF] ${Object.keys(characterRefAssets).length} 张上传完成`);
       return true;
     } catch (e) {
       console.log('[CHAR_REF] uploadCharRefViaFileInput:', e);
@@ -2047,20 +2047,20 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
     if (cancelBtn) {
       cancelBtn.click();
       await sleep(300);
-      console.log('[CHAR_REF] 잔여 이미지 삭제 완료');
+      console.log('[CHAR_REF] 残余图片清除完成');
     }
   }
 
-  /** 이미지투비디오 전용: File 1장을 file input으로 업로드 (캐릭터 레퍼런스 로직 재사용) */
+  /** 仅适用于图生视频模式: 通过 file input 上传 1 张 File */
   async function uploadSingleImageViaFileInput(file) {
     if (!file || !(file instanceof File)) {
-      console.log('[IMG2VID] uploadSingleImageViaFileInput: 유효한 File 필요');
+      console.log('[IMG2VID] uploadSingleImageViaFileInput: 需要有效的 File 对象');
       return false;
     }
     try {
       const fileInput = await ensureImageFileInput(5000);
       if (!fileInput) {
-        console.log('[IMG2VID] file input 없음');
+        console.log('[IMG2VID] 未找到 file input');
         return false;
       }
       const dataTransfer = new DataTransfer();
@@ -2381,7 +2381,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
       }
       const tileCount = window.countFlowTiles?.() ?? getTiles().length;
       if (tileCount < expectedCount) {
-        console.log(`[CHAR_REF] 타일 ${tileCount}/${expectedCount} 대기 중...`);
+        console.log(`[CHAR_REF] 等待磁贴生成 ${tileCount}/${expectedCount}...`);
         await sleep(300);
         continue;
       }
@@ -2393,11 +2393,11 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
           return m && parseInt(m[1], 10) < 100;
         });
       if (isGenerating) {
-        console.log(`[CHAR_REF] 타일 ${tileCount}/${expectedCount} — 마지막 생성 중...`);
+        console.log(`[CHAR_REF] 磁贴 ${tileCount}/${expectedCount} — 最后一个生成中...`);
         await sleep(300);
         continue;
       }
-      console.log(`[CHAR_REF] ✅ 전체 ${tileCount}개 완료 — ${Math.round(elapsed)}ms | 0.5초 안정화 대기`);
+      console.log(`[CHAR_REF] ✅ 全部 ${tileCount} 个完成 — ${Math.round(elapsed)}ms | 等待 0.5 秒稳定`);
       await sleep(500);
       return true;
     }
@@ -2690,10 +2690,10 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
    *   해결: 버튼이 나타나고 활성화(not disabled)될 때까지 최대 timeout 폴링 후 클릭
    *   다국어 + 모달 내부 한정. 클릭 성공 시 true, 없으면 false */
   async function clickAddToPromptButton(timeout = 3000) {
-    const ADD_TEXT = /프롬프트에\s*추가|add\s*to\s*prompt|프롬프트\s*추가/i;
+    const ADD_TEXT = /프롬프트에\s*추가|add\s*to\s*prompt|프롬프트\s*추가|添加媒体|添加到提示|添加到画板|Add\s*media|미디어\s*추가/i;
     const start = Date.now();
     while (Date.now() - start < timeout) {
-      const modal = document.querySelector('div[role="dialog"][data-state="open"]');
+      const modal = document.querySelector('div[role="dialog"][data-state="open"]') || document.querySelector('div[role="dialog"]');
       if (!modal) return false;  // 모달 이미 닫힘 (1-click 첨부됨)
       const btn = [...modal.querySelectorAll('button')].find(b => {
         if (!elementIsVisible(b)) return false;
@@ -3345,7 +3345,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
               log('FACTORY_BASE64', `prompt ${originalIdx + 1} 전송`, { filename: filename?.slice(-30) });
             }
           } catch (e) {
-            console.log('[FLOW Factory] imageBase64 fetch 실패:', originalIdx + 1, e?.message);
+            console.log('[FLOW Factory] imageBase64 获取失败:', originalIdx + 1, e?.message);
           }
         }
       }
@@ -3652,7 +3652,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
 
             const editorText = document.querySelector(PROMPT_EDITOR_SELECTOR)?.textContent?.trim();
             if (!editorText) {
-              console.log('[FLOW] 에디터 비어있음 — submit 건너뜀, 재시도');
+              console.log('[FLOW] 编辑器为空 — 跳过提交并重试');
               await sleep(gaussianDelay(400, 700));
               continue;
             }
@@ -4218,13 +4218,13 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
           document.querySelector(`[aria-label="x${userOC}"][role="tab"]`) ??
           document.querySelector(`button[id*="trigger-${userOC}"]`)
         );
-        if (!outputTab) throw new Error(`[VIDEO] x${userOC} 탭 없음`);
-        log('VIDEO', `x${userOC} 선택 (outputCount=${userOC})`);
+        if (!outputTab) throw new Error(`[VIDEO] 未找到 x${userOC} 数量标签`);
+        log('VIDEO', `选择 x${userOC} (outputCount=${userOC})`);
         await simulateClick(outputTab);
         await sleep(300);
 
         const modelDropdownBtn = findModelDropdownBtn();
-        if (!modelDropdownBtn) throw new Error('[VIDEO] 모델 드롭다운 없음');
+        if (!modelDropdownBtn) throw new Error('[VIDEO] 未找到模型下拉菜单按钮');
         await simulateClick(modelDropdownBtn);
         await sleep(500);
 
@@ -4298,7 +4298,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
         //   활성 상태면 STEP 7 의 모델 설정 버튼이 우측 패널로 이동해 못 찾음
         await deactivateAgentButton();
 
-        log('STEP 7', '모델 설정 버튼 클릭');
+        log('STEP 7', '点击模型设置按钮');
         let modelSettingsBtn = null;
         for (let i = 0; i < 25; i++) {
           modelSettingsBtn = findModelSettingsBtn();
@@ -4311,7 +4311,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
 
         const modeTab = findModeButton('Image');
         if (modeTab) {
-          log('STEP 8', 'IMAGE 탭 선택');
+          log('STEP 8', '选择 IMAGE 标签');
           await simulateClick(modeTab);
           await sleep(300);
         } else {
@@ -4361,8 +4361,8 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
           document.querySelector(`[aria-label="x${userOC}"][role="tab"]`) ??
           document.querySelector(`button[id*="trigger-${userOC}"]`)
         );
-        if (!outputTab) throw new Error(`x${userOC} 탭 없음`);
-        log('STEP 10', `x${userOC} 선택 (outputCount=${userOC})`);
+        if (!outputTab) throw new Error(`未找到 x${userOC} 数量标签`);
+        log('STEP 10', `选择 x${userOC} (outputCount=${userOC})`);
         await simulateClick(outputTab);
         await sleep(300);
 
@@ -4376,30 +4376,30 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
         if (!modelBtn) throw new Error('未找到指定模型: ' + modelName);
         await simulateClick(modelBtn);
         await sleep(300);
-        log('STEP 12', '모델 선택', { modelName });
+        log('STEP 12', '选择模型', { modelName });
 
         await clickEmptyAreaToClose();
         await waitForPanelClosed();
         await sleep(2000);
-        log('STEP 13', 'configureImageMode 완료');
+        log('STEP 13', 'configureImageMode 完成');
       }
 
       if (isVideoMode) {
         async function doNewProjectAndConfigureVideo(index) {
           if (index === 0) {
-            // ★ 첫 번째(i=0): 이미 Flow 홈에 있음 — 이미지 모드와 동일하게 새 프로젝트 클릭 (URL 이동 없이)
-            log('VIDEO', `새 프로젝트 클릭 — 프롬프트 1/${total} (이미지 모드와 동일)`);
+            // ★ 第1个 (i=0): 已在 Flow 主页 — 与图像模式相同点击新建项目 (无需 URL 跳转)
+            log('VIDEO', `点击新建项目 — 提示词 1/${total} (与图像模式相同)`);
             const newProjBtn = await waitForNewProjectButton();
             newProjBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-            await sleep(gaussianDelay(1500, 2500));  // ★ 안정화 대기 — 평균 2초, 1.5~2.5초 분포
+            await sleep(gaussianDelay(1500, 2500));  // ★ 稳定等待 — 平均 2 秒
             await simulateClick(newProjBtn);
-            log('STEP 1', '새 프로젝트 클릭');
+            log('STEP 1', '点击新建项目');
             await waitForNewProjectReady();
             await sleep(500);
-            log('STEP 1', '새 프로젝트 준비 완료');
+            log('STEP 1', '新建项目准备就绪');
             await configureVideoModeStandalone(settings);
           } else {
-            // ★ 두 번째 이상: 프로젝트 페이지 → Flow 홈으로 URL 이동 후 RESUME (storage는 background 경유)
+            // ★ 第2个及以上: 项目页面 → 跳转至 Flow 主页后恢复 RESUME
             const payloadMin = minifyVideoPayloadsForResume(payloads, settings);
             const promptsClean = prompts.map(p => appendNoBackgroundMusic(p || ''));
             const settingsMin = minifyVideoSettingsForResume(settings);
@@ -4408,10 +4408,10 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
               safeSendMessage({ type: 'SAVE_RESUME', data: resumeData }, (r) => {
                 if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
                 else if (r?.success) resolve();
-                else reject(new Error(r?.error || 'SAVE_RESUME 실패'));
+                else reject(new Error(r?.error || '保存断点续传状态失败'));
               });
             });
-            log('VIDEO', `새 프로젝트 전환 (URL 이동) — 프롬프트 ${index + 1}/${total}`);
+            log('VIDEO', `切换新项目 (URL 跳转) — 提示词 ${index + 1}/${total}`);
             safeSendMessage({ type: 'NAVIGATE_TAB_TO_FLOW' });
           }
         }
@@ -4421,13 +4421,13 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
       const PROJECT_BATCH_SIZE = 100;
       const allPayloads = payloads || [];
 
-      // ★ 이전 프로젝트 배치에서 누적된 상태 복원 (RESUME_IMAGE_PIPELINE 경유 시)
+      // ★ 恢复先前项目批次累积的状态 (RESUME_IMAGE_PIPELINE 路径)
       const imageResumeState = settings._imageResumeState;
       if (imageResumeState) {
         (imageResumeState.confirmedPromptIndices || []).forEach(i => confirmedPromptIndices.add(i));
         (imageResumeState.downloadedImageNames || []).forEach(n => downloadedImageNames.add(n));
         queuedDownloadCount = imageResumeState.queuedDownloadCount || 0;
-        log('PROJECT', '이전 프로젝트 누적 상태 복원', {
+        log('PROJECT', '恢复先前项目的累积状态', {
           confirmed: confirmedPromptIndices.size,
           downloaded: downloadedImageNames.size,
           queuedDownloads: queuedDownloadCount
@@ -4444,7 +4444,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
 
       if (shouldSplit) {
         const firstIdx = currentBatchPayloads[0]?.promptIndex ?? 0;
-        log('PROJECT', `프로젝트 ${projectBatchIndex + 1}/${totalProjectBatches}: ${currentBatchPayloads.length}개 처리 (#${firstIdx + 1}~)`, {
+        log('PROJECT', `项目批次 ${projectBatchIndex + 1}/${totalProjectBatches}: 处理 ${currentBatchPayloads.length} 个 (#${firstIdx + 1}~)`, {
           remaining: remainingPayloads.length
         });
         safeSendMessage({
@@ -4504,7 +4504,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
           safeSendMessage({ type: 'SAVE_IMAGE_RESUME', data: resumeData }, (r) => {
             if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
             else if (r?.success) resolve();
-            else reject(new Error(r?.error || 'SAVE_IMAGE_RESUME 실패'));
+            else reject(new Error(r?.error || '保存图像断点续传状态失败'));
           });
         });
 
@@ -4673,7 +4673,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
     try {
     safeSendMessage({ type: 'RESET_LAST_PROGRESS_SEQ' }).catch(() => {});
     await sleep(300);
-    console.log('[IMG2VID RESTART] attachImageAndProceed 시작', { i });
+    console.log('[IMG2VID RESTART] 开始 attachImageAndProceed', { i });
     const { prompts = [], payloads = [], settings, total = 1 } = data;
     const promptText = prompts[i] || '';
     const p = payloads[i] || {};
@@ -4682,7 +4682,7 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
       || (Array.isArray(p.lazyImageIndices) && p.lazyImageIndices.length > 0);
     if (!wantsAsset) {
       // Text-only prompt: still reset project + configure video, skip image upload
-      console.log('[IMG2VID RESTART] asset 없음 — 텍스트만 경로');
+      console.log('[IMG2VID RESTART] 无素材资产 — 仅文本路径');
       await waitForBridgeReady();
       const newProjBtn = await waitForNewProjectButton();
       newProjBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
@@ -4694,21 +4694,21 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
       return { resumePromptText: promptText };
     }
     await waitForBridgeReady();
-    console.log('[IMG2VID RESTART] bridge 준비 완료');
-    log('STEP 1', '새 프로젝트 버튼 대기');
+    console.log('[IMG2VID RESTART] bridge 准备完成');
+    log('STEP 1', '等待新建项目按钮');
     const newProjBtn = await waitForNewProjectButton();
     newProjBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-    await sleep(gaussianDelay(1500, 2500));  // ★ 안정화 대기 — 평균 2초, 1.5~2.5초 분포
+    await sleep(gaussianDelay(1500, 2500));  // ★ 稳定等待 — 平均 2 秒
     await simulateClick(newProjBtn);
-    console.log('[IMG2VID RESTART] 새 프로젝트 클릭 완료');
-    log('STEP 1', '새 프로젝트 클릭');
+    console.log('[IMG2VID RESTART] 点击新建项目完成');
+    log('STEP 1', '点击新建项目');
     await waitForNewProjectReady();
     await sleep(500);
-    log('STEP 1', '새 프로젝트 준비 완료');
+    log('STEP 1', '新建项目准备就绪');
     await configureVideoModeStandalone(settings);
     const assets = await resolveI2vAssetFiles(p, i);
     if (!assets.length) {
-      console.log(`[IMG2VID RESUME] 이미지 데이터 없음 — index ${i}`);
+      console.log(`[IMG2VID RESUME] 无图片数据 — index ${i}`);
       safeSendMessage({
         type: 'GENERATION_PROGRESS',
         data: {
@@ -4726,10 +4726,10 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
       }).catch(() => {});
       return null;
     }
-    log('IMG2VID', `[RESUME 전체재시작] asset ${assets.length}개 첨부`);
+    log('IMG2VID', `[RESUME 全部重新开始] 附加 asset ${assets.length} 个`);
     const ok = await uploadAndAttachI2vAssets(assets, `[RESUME ${i + 1}/${total}]`);
     if (!ok) {
-      console.log(`[IMG2VID RESUME] 이미지 ${i + 1} 첨부 실패`);
+      console.log(`[IMG2VID RESUME] 附加图片 ${i + 1} 失败`);
       return null;
     }
     return { resumePromptText: promptText };
@@ -4739,12 +4739,114 @@ if(typeof console!=="undefined" && window.__FLOW_SILENT__ === true){console.log=
     }
   }
 
+function setNativeInputValue(inputEl, value) {
+  if (!inputEl) return false;
+  try {
+    inputEl.focus();
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    if (nativeInputValueSetter) {
+      nativeInputValueSetter.call(inputEl, value);
+    } else {
+      inputEl.value = value;
+    }
+    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+    inputEl.dispatchEvent(new Event('blur', { bubbles: true }));
+    return true;
+  } catch (e) {
+    console.warn('[SYNC_CHAR] setNativeInputValue failed:', e);
+    return false;
+  }
+}
+
+async function renameCharacterTile(targetName) {
+  const tiles = [...document.querySelectorAll('flow-character-tile')];
+  if (!tiles.length) return false;
+
+  let tile = tiles.find(t => {
+    const nameSpan = t.querySelector('.character-tile-name');
+    const txt = (nameSpan ? nameSpan.textContent : t.textContent) || '';
+    return /未命名的角色|Unnamed\s*character|이름\s*없는\s*캐릭터/i.test(txt.trim());
+  }) || tiles[tiles.length - 1];
+
+  if (!tile) return false;
+
+  // 1. 尝试卡片上的“更多选项”菜单重命名
+  const moreBtn = tile.querySelector('button[aria-label="更多选项"], button[aria-label="More options"]') ||
+    [...tile.querySelectorAll('button')].find(b => {
+      const sym = b.querySelector('.google-symbols')?.textContent?.trim();
+      return sym === 'more_vert' || sym === 'more_horiz';
+    });
+
+  if (moreBtn) {
+    await simulateClick(moreBtn);
+    await sleep(350);
+    const renameMenuItem = [...document.querySelectorAll('.mat-mdc-menu-item, [role="menuitem"]')].find(el =>
+      /重命名|Rename|이름\s*변경/i.test((el.textContent || '').trim())
+    );
+    if (renameMenuItem) {
+      await simulateClick(renameMenuItem);
+      await sleep(350);
+      const renameInput = document.querySelector('.rename-tile-overlay input.editable-text-input, input.editable-text-input.editing, .cdk-overlay-pane input');
+      if (renameInput) {
+        setNativeInputValue(renameInput, targetName);
+        await sleep(200);
+        const confirmBtn = document.querySelector('.rename-tile-overlay button[aria-label="完成"], .cdk-overlay-pane button[aria-label="完成"]');
+        if (confirmBtn) {
+          await simulateClick(confirmBtn);
+        } else {
+          renameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+        }
+        await sleep(500);
+        log('SYNC_CHAR', `成功通过卡片菜单重命名为 [${targetName}]`);
+        return true;
+      }
+    }
+  }
+
+  // 2. 兜底方案：点击卡片进入详情页重命名
+  try {
+    await simulateClick(tile);
+    await sleep(1000);
+    const nameInput = document.querySelector('flow-character-form input.name-input, input[aria-label="角色名称"], input[placeholder="角色名称"], flow-character-edit-header input.editable-text-input');
+    if (nameInput) {
+      setNativeInputValue(nameInput, targetName);
+      await sleep(300);
+      const doneBtn = document.querySelector('flow-character-edit-header button[aria-label="完成修改"], button[aria-label="完成修改"]');
+      if (doneBtn) {
+        await simulateClick(doneBtn);
+        await sleep(1000);
+      }
+      log('SYNC_CHAR', `成功通过详情页重命名为 [${targetName}]`);
+      return true;
+    }
+  } catch (err) {
+    console.warn('[SYNC_CHAR] 详情页重命名异常:', err);
+  }
+
+  return false;
+}
+
 // ★ Flow 原生角色库注册执行器 (同步角色到 Flow 左侧「角色」面板)
 async function registerCharacterToFlowNative(charInfo) {
   if (!charInfo) throw new Error('缺少角色信息');
   const targetName = (charInfo.name || charInfo.code || 'Character').trim();
   const targetCode = (charInfo.code || '').trim();
   log('SYNC_CHAR', `开始将角色 [${targetName}] 注册到 Flow 原生角色库...`);
+
+  // 0. 优先检测当前页面是否已存在未命名的角色卡片，如果有则直接就地重命名
+  const existingUnnamedTile = [...document.querySelectorAll('flow-character-tile')].find(t => {
+    const nameSpan = t.querySelector('.character-tile-name');
+    const txt = (nameSpan ? nameSpan.textContent : t.textContent) || '';
+    return /未命名的角色|Unnamed\s*character|이름\s*없는\s*캐릭터/i.test(txt.trim());
+  });
+  if (existingUnnamedTile) {
+    log('SYNC_CHAR', '检测到画板已存在待命名角色卡片，直接执行重命名...');
+    const renamed = await renameCharacterTile(targetName);
+    if (renamed) {
+      return { success: true, characterName: targetName };
+    }
+  }
 
   // 1. 确保当前在 Flow 项目中
   const currentUrl = window.location.href;
@@ -4773,28 +4875,33 @@ async function registerCharacterToFlowNative(charInfo) {
   }
 
   // 3. 等待 /character 页面加载，寻找「从项目中添加」按钮
-  let addFromProjectBtn = null;
-  const startWait = Date.now();
-  while (Date.now() - startWait < 8000) {
-    addFromProjectBtn = [...document.querySelectorAll('button')].find(b =>
-      b.textContent.includes('从项目中添加') || b.textContent.includes('Add from project')
-    ) || document.querySelector('flow-create-character-footer button:last-child');
-    if (addFromProjectBtn && isElementVisible(addFromProjectBtn)) break;
-    await sleep(300);
-  }
+  // 若选择弹窗已经打开，直接复用当前弹窗
+  const isModalAlreadyOpen = !!document.querySelector('div[role="dialog"], [role="dialog"]');
+  if (!isModalAlreadyOpen) {
+    let addFromProjectBtn = null;
+    const startWait = Date.now();
+    while (Date.now() - startWait < 8000) {
+      addFromProjectBtn = [...document.querySelectorAll('button')].find(b => {
+        const txt = (b.textContent || '').trim();
+        return /从项目中添加|Add\s*from\s*project|프로젝트에서\s*추가/i.test(txt);
+      }) || document.querySelector('flow-create-character-footer button:last-child');
+      if (addFromProjectBtn && isElementVisible(addFromProjectBtn)) break;
+      await sleep(300);
+    }
 
-  if (!addFromProjectBtn) {
-    throw new Error('未找到「从项目中添加」按钮，请确认处于角色创建页面');
-  }
+    if (!addFromProjectBtn) {
+      throw new Error('未找到「从项目中添加」按钮，请确认处于角色创建页面');
+    }
 
-  await simulateClick(addFromProjectBtn);
-  await sleep(1000);
+    await simulateClick(addFromProjectBtn);
+    await sleep(1000);
+  }
 
   // 4. 等待项目资产选择弹窗加载
   let assetOptions = [];
   const modalWait = Date.now();
   while (Date.now() - modalWait < 8000) {
-    assetOptions = [...document.querySelectorAll('[role="option"], div[class*="asset-item"], .asset-item')].filter(isElementVisible);
+    assetOptions = [...document.querySelectorAll('[role="option"], div[class*="asset-item"], .asset-item, div[data-item-index], [data-item-index]')].filter(isElementVisible);
     if (assetOptions.length > 0) break;
     await sleep(300);
   }
@@ -4808,13 +4915,17 @@ async function registerCharacterToFlowNative(charInfo) {
   const normCode = targetCode.toLowerCase();
   let matchedOption = assetOptions.find(opt => {
     const txt = (opt.textContent || '').toLowerCase();
-    return (normName && txt.includes(normName)) || (normCode && txt.includes(normCode));
+    const alt = (opt.querySelector('img')?.alt || '').toLowerCase();
+    return (normName && (txt.includes(normName) || alt.includes(normName))) ||
+           (normCode && (txt.includes(normCode) || alt.includes(normCode)));
   });
 
   if (!matchedOption) {
     matchedOption = assetOptions.find(opt => {
       const txt = (opt.textContent || '').toLowerCase();
-      return txt.includes('reference') || txt.includes('character');
+      const alt = (opt.querySelector('img')?.alt || '').toLowerCase();
+      return txt.includes('reference') || txt.includes('character') ||
+             alt.includes('reference') || alt.includes('character');
     });
   }
 
@@ -4824,33 +4935,56 @@ async function registerCharacterToFlowNative(charInfo) {
 
   log('SYNC_CHAR', '选中素材:', matchedOption.textContent?.trim());
   await simulateClick(matchedOption);
-  await sleep(400);
+  await sleep(500);
 
-  // 点击「添加到提示」按钮
-  const addToPromptBtn = [...document.querySelectorAll('button')].find(b =>
-    b.textContent.includes('添加到提示') || b.textContent.includes('Add to prompt')
-  );
+  // 点击确认添加按钮（多语言支持：「添加媒体」、「添加到提示」、「Add media」、「Add to prompt」等）
+  const ADD_BTN_REGEX = /添加媒体|添加到提示|添加到画板|Add\s*media|Add\s*to\s*prompt|미디어\s*추가|프롬프트에\s*추가/i;
+  let addToPromptBtn = [...document.querySelectorAll('button')].find(b => {
+    if (!isElementVisible(b) || b.disabled) return false;
+    const txt = (b.textContent || '').trim();
+    return ADD_BTN_REGEX.test(txt);
+  });
+
+  // 弹窗内主要确认按钮兜底
   if (!addToPromptBtn) {
-    throw new Error('未找到「添加到提示」按钮');
+    const dialog = document.querySelector('div[role="dialog"], [role="dialog"]');
+    if (dialog) {
+      const dialogBtns = [...dialog.querySelectorAll('button')].filter(b => isElementVisible(b) && !b.disabled);
+      addToPromptBtn = dialogBtns.find(b => {
+        const txt = (b.textContent || '').trim();
+        return txt.includes('添加') || /add|insert|select/i.test(txt);
+      }) || dialogBtns[dialogBtns.length - 1];
+    }
+  }
+
+  if (!addToPromptBtn) {
+    throw new Error('未找到「添加媒体」按钮');
   }
   await simulateClick(addToPromptBtn);
   await sleep(1000);
 
-  // 6. 查找输入框并填入角色名称
+  // 6. 查找输入框并填入角色名称与描述
+  const nameInput = document.querySelector('flow-character-form input.name-input, input[aria-label="角色名称"], input[placeholder="角色名称"], flow-character-edit-header input.editable-text-input');
+  if (nameInput) {
+    setNativeInputValue(nameInput, targetName);
+  }
+
   const editor = document.querySelector('flow-character-prompt-input [contenteditable="true"], flow-create-character-footer [contenteditable="true"], .ProseMirror[contenteditable="true"], [contenteditable="true"][data-slate-editor="true"], textarea');
   if (editor) {
     editor.focus();
     document.execCommand('selectAll', false, null);
-    document.execCommand('insertText', false, targetName);
+    document.execCommand('insertText', false, charInfo.prompt || targetName);
     editor.dispatchEvent(new InputEvent('input', { bubbles: true }));
     await sleep(400);
   }
 
   // 7. 提交生成角色
-  const submitBtn = [...document.querySelectorAll('button')].find(b =>
-    b.textContent.includes('开始生成') ||
-    b.querySelector('.google-symbols')?.textContent?.trim() === 'arrow_forward'
-  );
+  const submitBtn = [...document.querySelectorAll('button')].find(b => {
+    if (!isElementVisible(b) || b.disabled) return false;
+    const txt = (b.textContent || '').trim();
+    return /开始生成|生成角色|创建|Create|Generate|시작/i.test(txt) ||
+      b.querySelector('.google-symbols')?.textContent?.trim() === 'arrow_forward';
+  });
 
   if (submitBtn && !submitBtn.disabled) {
     await simulateClick(submitBtn);
@@ -4868,14 +5002,24 @@ async function registerCharacterToFlowNative(charInfo) {
   let completed = false;
 
   while (Date.now() - genWaitStart < GEN_TIMEOUT_MS) {
-    const checkBtn = [...document.querySelectorAll('button')].find(b =>
-      b.textContent.includes('完成修改') ||
-      b.getAttribute('aria-label')?.includes('完成修改') ||
-      b.querySelector('.google-symbols')?.textContent?.trim() === 'check'
-    );
+    const checkBtn = [...document.querySelectorAll('button')].find(b => {
+      if (!isElementVisible(b) || b.disabled) return false;
+      const txt = (b.textContent || '').trim();
+      const aria = b.getAttribute('aria-label') || '';
+      return /完成修改|完成|保存|Save|Done|완료/i.test(txt) ||
+        /完成修改|完成|保存|Save|Done/i.test(aria) ||
+        b.querySelector('.google-symbols')?.textContent?.trim() === 'check';
+    });
 
     if (checkBtn && isElementVisible(checkBtn) && !checkBtn.disabled) {
-      log('SYNC_CHAR', '角色生成完成，点击「完成修改」保存...');
+      log('SYNC_CHAR', '角色生成完成，检查并填入角色名称...');
+      const nameInputBeforeDone = document.querySelector('flow-character-form input.name-input, input[aria-label="角色名称"], input[placeholder="角色名称"], flow-character-edit-header input.editable-text-input');
+      if (nameInputBeforeDone) {
+        setNativeInputValue(nameInputBeforeDone, targetName);
+        await sleep(300);
+      }
+
+      log('SYNC_CHAR', '点击「完成修改」保存...');
       await simulateClick(checkBtn);
       await sleep(1500);
       completed = true;
@@ -4897,7 +5041,11 @@ async function registerCharacterToFlowNative(charInfo) {
     }
   }
 
-  log('SYNC_CHAR', `角色 [${targetName}] 注册流程结束，已返回画板`);
+  // 返回画板后，校验并重命名角色卡片（确保网格显示为目标角色名称）
+  await sleep(1200);
+  await renameCharacterTile(targetName);
+
+  log('SYNC_CHAR', `角色 [${targetName}] 注册流程结束，已返回画板并确认名称`);
   return { success: true, characterName: targetName };
 }
 
@@ -5115,11 +5263,11 @@ if (!window.__flowContentListenerRegistered) {
                 else resolve(r || { data: null });
               });
             });
-            console.log('[DEBUG RESUME_VIDEO_PIPELINE] GET_RESUME 응답:', result);
+            console.log('[DEBUG RESUME_VIDEO_PIPELINE] GET_RESUME 响应:', result);
             data = result?.data;
           }
           if (!data || data.index === undefined) {
-            log('VIDEO', '실패: videoPipelineResume 없음');
+            log('VIDEO', '失败: 未找到 videoPipelineResume 状态');
             return;
           }
           const i = data.index;
@@ -5135,17 +5283,17 @@ if (!window.__flowContentListenerRegistered) {
             safeSendMessage({ type: 'RESET_LAST_PROGRESS_SEQ' }).catch(() => {});
             await sleep(300);
           }
-          // [IMG2VID DEBUG] payloads 이미지 데이터 존재 여부 확인 (FLOW_imgToVideo_큐저장_카운터패치2)
+          // [IMG2VID DEBUG] payloads 图片数据存在性检查
           console.log(`[IMG2VID DEBUG] index=${i}, total=${total}`);
           console.log(`[IMG2VID DEBUG] payloads.length=${payloads.length}`);
-          console.log(`[IMG2VID DEBUG] payloads[${i}] 존재:`, !!p);
+          console.log(`[IMG2VID DEBUG] payloads[${i}] 存在:`, !!p);
           console.log(`[IMG2VID DEBUG] payloads[${i}].images:`, p?.images?.length ?? 'undefined');
-          console.log(`[IMG2VID DEBUG] images[0] 존재:`, !!(p?.images?.[0]));
-          console.log(`[IMG2VID DEBUG] images[0] base64 길이:`, p?.images?.[0]?.base64?.length ?? 0);
+          console.log(`[IMG2VID DEBUG] images[0] 存在:`, !!(p?.images?.[0]));
+          console.log(`[IMG2VID DEBUG] images[0] base64 长度:`, p?.images?.[0]?.base64?.length ?? 0);
           const payloadMin = { scriptText: p.scriptText || '', characters: p.characters || '', number: p.number || '', originalFilename: p.originalFilename || p.images?.[0]?.name || '' };
-          log('VIDEO', `재개 — 프롬프트 ${i + 1}/${total}`);
+          log('VIDEO', `断点恢复 — 提示词 ${i + 1}/${total}`);
 
-          // ─── 이미지투비디오 단독 모드만 적용 (조건 절대 제거 금지, 다른 모드 영향 없음) ───
+          // ─── 仅适用于图生视频模式 ───
           let resumePromptText = promptText;
           let skipNewProjectAndUpload = false;
           let resumePromptFilledInline = false;
@@ -5153,31 +5301,31 @@ if (!window.__flowContentListenerRegistered) {
             const tileWithImage = [...getTiles()].find(tile => tile.querySelector('img'))?.querySelector('img');
             const isImageAttached = !!tileWithImage;
             if (!isImageAttached) {
-              console.log(`[IMG2VID RESUME] 이미지 없음 → 전체 재시작 (index ${i})`);
+              console.log(`[IMG2VID RESUME] 无图片 → 全部重新开始 (index ${i})`);
               const attachResult = await attachImageAndProceed(data, i);
               if (!attachResult) return;
               resumePromptText = attachResult.resumePromptText;
               skipNewProjectAndUpload = true;
             } else {
-              console.log(`[IMG2VID RESUME] 이미지 존재 확인 → 생성 재시도 (index ${i})`);
+              console.log(`[IMG2VID RESUME] 确认图片存在 → 重新尝试生成 (index ${i})`);
               skipNewProjectAndUpload = true;
             }
           }
 
-          // ★ Factory 전용: 페이지/브릿지 준비 대기 후 bridge 재시도 (다른 모드 무영향)
+          // ★ Factory 专用: 等待 bridge 就绪
           if (isFactoryResume) {
             await sleep(1500);
-            console.log('[FLOW RESUME] waitForBridgeReady 시작');
+            console.log('[FLOW RESUME] 开始 waitForBridgeReady');
           }
           await waitForBridgeReady();
           if (isFactoryResume) {
             await sleep(1000);
             await waitForBridgeReady();
-            console.log('[FLOW RESUME] waitForBridgeReady 완료, 새 프로젝트 버튼 대기');
+            console.log('[FLOW RESUME] waitForBridgeReady 完成，等待新建项目按钮');
           }
           if (!skipNewProjectAndUpload) {
-          // ★ 이미지 모드와 동일: 새 프로젝트 버튼 대기 → 클릭 → 에디터 로드 대기
-          log('STEP 1', '새 프로젝트 버튼 대기');
+          // ★ 与图像模式相同: 等待新建项目按钮 → 点击 → 等待编辑器加载
+          log('STEP 1', '等待新建项目按钮');
           let newProjBtn;
           if (isFactoryResume) {
             try {
@@ -5190,12 +5338,12 @@ if (!window.__flowContentListenerRegistered) {
             newProjBtn = await waitForNewProjectButton();
           }
           newProjBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-          await sleep(gaussianDelay(1500, 2500));  // ★ 안정화 대기 — 평균 2초, 1.5~2.5초 분포
+          await sleep(gaussianDelay(1500, 2500));  // ★ 稳定等待 — 平均 2 秒
           await simulateClick(newProjBtn);
-          log('STEP 1', '새 프로젝트 클릭');
+          log('STEP 1', '点击新建项目');
           await waitForNewProjectReady();
           await sleep(500);
-          log('STEP 1', '새 프로젝트 준비 완료');
+          log('STEP 1', '新建项目准备就绪');
           await configureVideoModeStandalone(settings);
 
           resumePromptText = promptText;
@@ -5208,36 +5356,35 @@ if (!window.__flowContentListenerRegistered) {
           }
           }
 
-          // ★ 수동 일시정지 재개 + 이미지 존재: 이미 submit됨 → fillPrompt/submit 생략, 바로 SD 완료 대기
-          // ★ 크레딧 소진 재개: hadSubmitted=false → 반드시 fillPrompt/submit 수행
+          // ★ 手动暂停恢复 + 图片存在: 跳过 fillPrompt/submit，直接等待 SD 完成
           const skipFillPromptAndSubmit = skipNewProjectAndUpload && data.hadSubmitted === true;
           if (skipFillPromptAndSubmit) {
-            log('IMG2VID', `[RESUME ${i + 1}/${total}] 수동 일시정지 재개 — fillPrompt/submit 생략, SD 완료 대기`);
+            log('IMG2VID', `[RESUME ${i + 1}/${total}] 手动暂停恢复 — 跳过 fillPrompt/submit，等待 SD 完成`);
           } else {
-          log('IMG2VID', `[RESUME ${i + 1}/${total}] 프롬프트 입력`, { len: resumePromptText.length, inline: resumePromptFilledInline });
+          log('IMG2VID', `[RESUME ${i + 1}/${total}] 输入提示词`, { len: resumePromptText.length, inline: resumePromptFilledInline });
           const editor = await waitForElement(PROMPT_EDITOR_SELECTOR);
-          // 인라인 @mention 경로는 fillImageGenPrompt 가 이미 채웠으므로 재입력 생략
+          // 已经由 fillImageGenPrompt 填充则跳过重新输入
           if (!resumePromptFilledInline) await fillPrompt(editor, resumePromptText, 3);
           await waitForSubmitEnabled();
           const hasButton = await checkSubmitButtonWithRetry();
           let submitBtn = hasButton ? findSubmitButton() : null;
           if (!submitBtn) {
-            log('VIDEO', '❌ 생성 버튼 없음 — 크레딧 소진');
+            log('VIDEO', '❌ 未找到生成按钮 — 算力已耗尽');
             safeSendMessage({ type: 'CREDIT_EXHAUSTED', data: { source: 'VIDEO' } }).catch(() => {});
             triggerAutoPause('CREDIT_EXHAUSTED');
             const settingsWithFactory = { ...settings, isFactoryVideoPhase: settings?.isFactoryVideoPhase ?? false };
             const submitBtnNullData = { index: i, prompts, payloads, settings: settingsWithFactory, projectName, total, hadSubmitted: false };
-            console.log('[DEBUG] SAVE_RESUME 호출 시작 (submitBtn null, RESUME)');
+            console.log('[DEBUG] SAVE_RESUME 调用开始 (submitBtn null, RESUME)');
             safeSendMessage({ type: 'SAVE_RESUME', data: submitBtnNullData }, (r) => {
-              if (chrome.runtime.lastError) log('VIDEO', 'SAVE_RESUME 실패', chrome.runtime.lastError);
-              else if (!r?.success) log('VIDEO', 'SAVE_RESUME 실패', r?.error);
+              if (chrome.runtime.lastError) log('VIDEO', 'SAVE_RESUME 失败', chrome.runtime.lastError);
+              else if (!r?.success) log('VIDEO', 'SAVE_RESUME 失败', r?.error);
             });
-            console.log('[DEBUG] SAVE_RESUME 호출 완료 (submitBtn null, RESUME)');
+            console.log('[DEBUG] SAVE_RESUME 调用完成 (submitBtn null, RESUME)');
             await waitWhilePaused();
             submitBtn = findSubmitButton();
             if (!submitBtn) {
-              log('VIDEO', '재개 후에도 생성 버튼 없음 — 폴백: 실패 처리');
-              console.log('[FLOW RESUME] 생성 버튼 없음 — 로그만 기록, 에러 미발생');
+              log('VIDEO', '恢复后仍未找到生成按钮 — 回退: 标记失败');
+              console.log('[FLOW RESUME] 未找到生成按钮 — 仅记录日志，不抛出异常');
               return;
             }
           }
@@ -5246,7 +5393,7 @@ if (!window.__flowContentListenerRegistered) {
           });
           log('IMG2VID', `[RESUME ${i + 1}/${total}] 제출 검증`, resumeSubmitResult);
           if (!resumeSubmitResult.success) {
-            throw new Error(`[VIDEO] RESUME 제출 실패 (${i + 1}번째) — 클릭 미등록`);
+            throw new Error(`[VIDEO] 断点续传提交失败 (第 ${i + 1} 个) — 点击未成功注册`);
           }
           safeSendMessage({
             type: 'GENERATION_PROGRESS',
@@ -5268,29 +5415,29 @@ if (!window.__flowContentListenerRegistered) {
           const completedTile = await waitForVideoSDComplete();
             if (!completedTile) {
             if (controlState === 'PAUSED') {
-              log('VIDEO', '크레딧 소진 — RESUME 일시정지 (재개 대기)');
+              log('VIDEO', '算力额度耗尽 — 暂停断点续传任务 (等待恢复)');
               const settingsWithFactory = { ...settings, isFactoryVideoPhase: settings?.isFactoryVideoPhase ?? false };
               const pauseData = { index: i, prompts, payloads, settings: settingsWithFactory, projectName, total, hadSubmitted: true };
-              console.log('[DEBUG] SAVE_RESUME 호출 시작 (RESUME)');
+              console.log('[DEBUG] SAVE_RESUME 调用开始 (RESUME)');
               await new Promise((resolve, reject) => {
                 safeSendMessage({ type: 'SAVE_RESUME', data: pauseData }, (r) => {
                   if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
                   else if (r?.success) {
                     chrome.storage.local.get('videoPipelineResume', (s) => {
-                      console.log('[DEBUG RESUME] SAVE_RESUME 직후 storage 확인:', s);
+                      console.log('[DEBUG RESUME] SAVE_RESUME 之后 storage 确认:', s);
                     });
                     resolve();
-                  } else reject(new Error(r?.error || 'SAVE_RESUME 실패'));
+                  } else reject(new Error(r?.error || '保存断点续传状态失败'));
                 });
-              }).catch((e) => log('VIDEO', 'SAVE_RESUME 실패', { err: e?.message }));
-              console.log('[DEBUG] SAVE_RESUME 호출 완료 (RESUME)');
+              }).catch((e) => log('VIDEO', '保存断点续传状态失败', { err: e?.message }));
+              console.log('[DEBUG] SAVE_RESUME 调用完成 (RESUME)');
               safeSendMessage({
                 type: 'GENERATION_PROGRESS',
                 data: { phase: 'chunk-downloading', totalSuccess: i, totalFail: 1, total, submittedCount: i + 1, chunkStart: i, chunkEnd: i, activePromptIndices: [], completedPromptIndices: Array.from({ length: i }, (_, k) => k), failedPromptIndices: [i], progressSeq: Date.now() }
               }).catch(() => {});
               return;
             }
-            throw new Error(`[VIDEO] ❌ SD 타임아웃 (${i + 1}번째)`);
+            throw new Error(`[VIDEO] 视频生成等待超时 (第 ${i + 1} 个)`);
           }
           const baseName = typeof window.generateFilename === 'function'
             ? window.generateFilename({ mode: settings?.mode || 'textToVideo', promptIndex: i, imageIndex: 0, scriptText: payloadMin.scriptText || '', promptText, characterCode: payloadMin.characters || '', sceneNumber: payloadMin.number || '', originalFilename: settings?.isFactoryVideoPhase ? '' : (payloadMin.originalFilename || '') })
@@ -5299,9 +5446,9 @@ if (!window.__flowContentListenerRegistered) {
           // ★ 업스케일 비활성화 — 모든 모드 SD 직접 (재개 경로도 동일)
           try {
             await downloadSD(completedTile, filename);
-            log('VIDEO', `✅ SD 직접 다운로드 (재개): ${filename}`);
+            log('VIDEO', `✅ SD 直接下载 (断点恢复): ${filename}`);
           } catch (sdErr) {
-            log('VIDEO', `⚠️ SD 다운로드 실패: ${sdErr?.message || sdErr}`);
+            log('VIDEO', `⚠️ SD 下载失败: ${sdErr?.message || sdErr}`);
             throw sdErr;
           }
           // ★ 다운로드 완료 후 totalSuccess 증가하여 PROGRESS 전송 (이미지 모드와 동일)
@@ -5316,7 +5463,7 @@ if (!window.__flowContentListenerRegistered) {
               safeSendMessage({ type: 'SAVE_RESUME', data: nextData }, (r) => {
                 if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
                 else if (r?.success) resolve();
-                else reject(new Error(r?.error || 'SAVE_RESUME 실패'));
+                else reject(new Error(r?.error || '保存断点续传状态失败'));
               });
             });
             safeSendMessage({ type: 'NAVIGATE_TAB_TO_FLOW' });
@@ -5332,7 +5479,7 @@ if (!window.__flowContentListenerRegistered) {
             }).catch(() => {});
           }
         } catch (err) {
-          log('VIDEO', '재개 실패 — 파이프라인 중단', { message: err.message });
+          log('VIDEO', '恢复失败 — 流水线中断', { message: err.message });
           safeSendMessage({ type: 'CLEAR_RESUME' }, () => {});
           const t = typeof total !== 'undefined' ? total : 1;
           for (let k = 0; k < t; k++) {
@@ -5368,17 +5515,17 @@ if (!window.__flowContentListenerRegistered) {
       return true;
     }
 
-    // ★ 이미지 프로젝트 분할 재개 — Flow 홈 이동 후 새 content script에서 수신
+    // ★ 图像项目分片恢复 — 跳转 Flow 主页后新 content script 接收
     if (message.type === 'RESUME_IMAGE_PIPELINE') {
-      // ★ 이중 전달 방지 — NAVIGATE_TAB_TO_FLOW_IMAGE + FLOW_CONTENT_READY 둘 다 보낼 수 있음
+      // 防止重复调用
       if (controlState === 'RUNNING') {
-        log('PROJECT', 'RESUME_IMAGE_PIPELINE 무시 — 이미 실행 중');
+        log('PROJECT', 'RESUME_IMAGE_PIPELINE 忽略 — 正在运行中');
         sendResponse({ success: false, reason: 'already_running' });
         return true;
       }
       (async () => {
         try {
-          log('PROJECT', 'RESUME_IMAGE_PIPELINE 수신');
+          log('PROJECT', '收到 RESUME_IMAGE_PIPELINE');
           const result = await new Promise((resolve) => {
             safeSendMessage({ type: 'GET_IMAGE_RESUME' }, (r) => {
               if (chrome.runtime.lastError) resolve({ data: null });
@@ -5387,18 +5534,16 @@ if (!window.__flowContentListenerRegistered) {
           });
           const data = result?.data;
           if (!data || !data.payloads?.length) {
-            log('PROJECT', 'RESUME_IMAGE_PIPELINE 실패: 저장된 데이터 없음');
-            // ★ 데이터 없으면 storage 정리 (이미 소비된 경우)
+            log('PROJECT', 'RESUME_IMAGE_PIPELINE 失败: 无保存的数据');
             safeSendMessage({ type: 'CLEAR_IMAGE_RESUME' }).catch(() => {});
             return;
           }
 
-          // ★ storage 즉시 소비 — FLOW_CONTENT_READY 폴백에서 중복 재개 방지
           safeSendMessage({ type: 'CLEAR_IMAGE_RESUME' }).catch(() => {});
 
           const { prompts, payloads: remainingPayloads, settings: resumeSettings } = data;
 
-          // ★ characterRefAssets 복원 — resume 데이터에서 제외됨 (base64 용량), storage에서 직접 읽기
+          // ★ 恢复 characterRefAssets
           if (resumeSettings?._hasCharacterRefAssets && !resumeSettings.characterRefAssets) {
             try {
               const stored = await new Promise((resolve) => {
@@ -5406,16 +5551,16 @@ if (!window.__flowContentListenerRegistered) {
               });
               if (stored?.characterRefAssets) {
                 resumeSettings.characterRefAssets = stored.characterRefAssets;
-                log('PROJECT', 'characterRefAssets storage에서 복원', {
+                log('PROJECT', '从 storage 恢复 characterRefAssets', {
                   keys: Object.keys(stored.characterRefAssets)
                 });
               }
             } catch (e) {
-              log('PROJECT', 'characterRefAssets 복원 실패', { error: e?.message });
+              log('PROJECT', 'characterRefAssets 恢复失败', { error: e?.message });
             }
           }
 
-          log('PROJECT', `이미지 파이프라인 재개`, {
+          log('PROJECT', `图像流水线恢复`, {
             prompts: prompts?.length,
             remainingPayloads: remainingPayloads?.length,
             projectBatchIndex: resumeSettings?._projectBatchIndex,
@@ -5438,11 +5583,11 @@ if (!window.__flowContentListenerRegistered) {
           // isRetry=false로 실행되므로 STEP 0/1/CHAR_REF/configureImageMode 자동 수행
           await runFlowPipeline(prompts, resumeSettings, remainingPayloads);
         } catch (err) {
-          log('PROJECT', '이미지 파이프라인 재개 실패', { message: err.message, stack: err.stack });
+          log('PROJECT', '图像流水线恢复失败', { message: err.message, stack: err.stack });
           safeSendMessage({ type: 'CLEAR_IMAGE_RESUME' }).catch(() => {});
           safeSendMessage({
             type: 'FLOW_ERROR',
-            data: { message: `프로젝트 분할 재개 실패: ${err.message}` }
+            data: { message: `项目分片恢复失败: ${err.message}` }
           }).catch(() => {});
         }
       })();
