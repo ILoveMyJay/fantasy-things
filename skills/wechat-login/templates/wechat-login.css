@@ -1,0 +1,45 @@
+/* templates/wechat-login.css */
+/* 微信开放平台扫码登录 iframe 自定义样式表 */
+/* 用途：放入项目的 public/ 目录，通过 href 参数注入微信扫码 iframe，消除第三方应用名称、标题并对齐二维码边距 */
+
+.impowerBox .qrcode {
+  margin-top: 0 !important;
+  border-radius: 8px !important;
+}
+
+/* 隐藏应用名称（如“雨沐春林”）、原标题和多余文字 */
+.web_qrcode_panel_normal_login p,
+.web_qrcode_panel_wrp p,
+.web_qrcode_app_wrp,
+.web_qrcode_app,
+.impowerBox .title,
+.impowerBox .info,
+.status_icon,
+.web_qrcode_tips,
+p {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  line-height: 0 !important;
+  font-size: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  opacity: 0 !important;
+}
+
+/* 清除外层多余间隙 */
+.web_qrcode_panel_normal_login,
+.web_qrcode_panel_wrp,
+.impowerBox .waiting,
+.impowerBox .panelContent {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.js_qrcode_img,
+.qrcode {
+  margin: 0 auto !important;
+  display: block !important;
+}
