@@ -170,39 +170,156 @@
   }
 
   /**
-   * 寻找生成提交按钮 (标准属性 + DOM 遍历)
+   * 寻找生成提交按钮 (最高优先级的 arrow_forward 图标定位 + 容器遍历 + 属性匹配)
    */
   function findSubmitButton() {
-    // 1. 尝试标准 CSS 属性匹配
+    // 1. 🥇 1 优先级：查找包含 'arrow_forward' 或 'send' 的图标元素，取其所属 button
     try {
-      const direct = document.querySelector('button[aria-label*="Generate"], button[aria-label*="生成"], button[aria-label*="생성"]');
-      if (direct && isElementVisible(direct)) return direct;
+      const icons = document.querySelectorAll('.google-symbols, i, span');
+      for (let i = 0; i < icons.length; i++) {
+        const icon = icons[i];
+        const text = (icon.textContent || '').trim();
+        if (text === 'arrow_forward' || text === 'send') {
+          const btn = icon.closest('button, [role="button"]') || icon.parentElement;
+          if (btn && isElementVisible(btn)) return btn;
+        }
+      }
     } catch (_) {}
 
-    // 2. 遍历所有 button，根据图标文本与文字特征精准寻找
-    const buttons = document.querySelectorAll('button');
-    for (let i = 0; i < buttons.length; i++) {
-      const b = buttons[i];
-      const sym = b.querySelector('.google-symbols, i, span');
-      const symText = (sym?.textContent || '').trim();
-      if (symText === 'arrow_forward' || symText === 'send') return b;
-      const btnText = (b.textContent || '').trim();
-      if (btnText === '生成' || btnText === 'Generate' || btnText === '생성') return b;
-      const label = b.getAttribute('aria-label') || '';
-      if (/生成|Generate|생성/i.test(label)) return b;
-    }
+    // 2. 🥈 2 优先级：在 Prompt Editor 所在的父容器/卡片内部定位提交按钮
+    try {
+      const editor = findPromptEditor();
+      if (editor) {
+        let container = editor.parentElement;
+        for (let depth = 0; depth < 5 && container; depth++) {
+          const btns = container.querySelectorAll('button, [role="button"]');
+          for (let i = btns.length - 1; i >= 0; i--) {
+            const btn = btns[i];
+            if (!isElementVisible(btn)) continue;
+            if (btn.getAttribute('aria-haspopup') === 'menu') continue; // 排除模型切换下拉框
+            const label = btn.getAttribute('aria-label') || '';
+            if (/close|clear|cancel|关闭/i.test(label)) continue;
+
+            const sym = btn.querySelector('.google-symbols, i, span');
+            const symText = (sym?.textContent || '').trim();
+            if (symText === 'arrow_forward' || symText === 'send') return btn;
+
+            // 如果位于卡片右侧且带有图标
+            const rect = btn.getBoundingClientRect();
+            if (rect.width >= 24 && rect.height >= 24 && (btn.querySelector('.google-symbols') || btn.querySelector('svg'))) {
+              return btn;
+            }
+          }
+          container = container.parentElement;
+        }
+      }
+    } catch (_) {}
+
+    // 3. 🥉 3 优先级：多语言 aria-label 精准匹配 (排除 menu 下拉)
+    try {
+      const btns = document.querySelectorAll('button, [role="button"]');
+      const SUBMIT_REGEX = /^(生成|提交|Generate|Submit|생성|제출)$/i;
+      for (let i = 0; i < btns.length; i++) {
+        const btn = btns[i];
+        if (!isElementVisible(btn)) continue;
+        if (btn.getAttribute('aria-haspopup') === 'menu') continue;
+        const label = btn.getAttribute('aria-label') || '';
+        if (SUBMIT_REGEX.test(label) || SUBMIT_REGEX.test((btn.textContent || '').trim())) {
+          return btn;
+        }
+      }
+    } catch (_) {}
+
     return null;
   }
 
   /**
-   * 触发生成提交按钮
+   * 等待提交按钮进入就绪可点击状态 (等待 React 状态渲染完成)
+   */
+  async function waitForSubmitEnabled(timeout = 3000) {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const btn = findSubmitButton();
+      if (btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true' && btn.getAttribute('data-state') !== 'disabled') {
+        return btn;
+      }
+      await sleep(100);
+    }
+    return findSubmitButton();
+  }
+
+  /**
+   * 触发生成提交按钮 (优先 CDP 硬件级真实鼠标事件 isTrusted=true，突破 Flow 提交防护)
    */
   async function clickSubmit() {
-    const submitBtn = findSubmitButton();
+    // 1. 等待提交按钮变为可点击状态
+    const submitBtn = await waitForSubmitEnabled(3000);
     if (!submitBtn) {
       throw new Error('未找到 Flow 生成提交按钮，请确认当前已处于 flow.google.com 项目画板并且输入框可用');
     }
-    return await clickElement(submitBtn);
+
+    // 2. 滚动并测量坐标
+    try {
+      submitBtn.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+    } catch (_) {}
+    await sleep(80);
+
+    const rect = submitBtn.getBoundingClientRect();
+    const cx = Math.round(rect.left + rect.width / 2);
+    const cy = Math.round(rect.top + rect.height / 2);
+
+    // 3. 产生 UI hover / pointer 视觉反馈
+    const opts = { bubbles: true, cancelable: true, composed: true, clientX: cx, clientY: cy };
+    submitBtn.dispatchEvent(new PointerEvent('pointerover', opts));
+    submitBtn.dispatchEvent(new PointerEvent('pointerenter', opts));
+    submitBtn.dispatchEvent(new MouseEvent('mouseover', opts));
+
+    // 4. 发起 CDP 硬件级真实鼠标点击 (isTrusted=true)
+    let cdpSuccess = false;
+    try {
+      const cdpRes = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+          type: 'CDP_CLICK',
+          x: cx,
+          y: cy,
+          selector: '.google-symbols, span, i'
+        }, (res) => {
+          resolve(res || { ok: false, error: 'no response' });
+        });
+      });
+
+      if (cdpRes && cdpRes.ok) {
+        cdpSuccess = true;
+        console.log('[FantasyAutomation] CDP 硬件级真实点击成功:', cdpRes);
+      } else {
+        console.warn('[FantasyAutomation] CDP 点击未成功，回退到原生点击方案:', cdpRes?.error);
+      }
+    } catch (e) {
+      console.warn('[FantasyAutomation] CDP 通信异常，回退原生:', e);
+    }
+
+    // 5. 若 CDP 未能成功，或者作为双重保险，执行 DOM 级原生触发
+    if (!cdpSuccess) {
+      submitBtn.dispatchEvent(new PointerEvent('pointerdown', opts));
+      submitBtn.dispatchEvent(new MouseEvent('mousedown', opts));
+      submitBtn.dispatchEvent(new PointerEvent('pointerup', opts));
+      submitBtn.dispatchEvent(new MouseEvent('mouseup', opts));
+      submitBtn.click();
+    }
+
+    // 6. 等待并检查：若未被消费，尝试通过 CDP Enter 辅助确认提交
+    await sleep(600);
+    const editor = findPromptEditor();
+    if (editor && (editor.textContent || '').trim().length > 0) {
+      try {
+        await new Promise((resolve) => {
+          chrome.runtime.sendMessage({ type: 'CDP_PRESS_ENTER' }, resolve);
+        });
+      } catch (_) {}
+    }
+
+    await sleep(600);
+    return true;
   }
 
   /**

@@ -815,15 +815,31 @@
     }
 
     if (event === 'SUBMITTING') {
-      if (isVideo) el.videoBatchStatusText.textContent = `已向 Veo 提交渲染任务...`;
-      else el.imageBatchStatusText.textContent = `已向 Google Flow 提交渲染...`;
-      appendLog(`分镜 #${message.index} 提交生成`, 'info');
+      if (message.mode === 'CHARACTER_BUILD') {
+        appendLog(`[角色建库] 正在向 Google Flow 提交【${message.charName || ''}】四面定妆图渲染...`, 'info');
+      } else {
+        if (isVideo) el.videoBatchStatusText.textContent = `已向 Veo 提交渲染任务...`;
+        else el.imageBatchStatusText.textContent = `已向 Google Flow 提交渲染...`;
+        appendLog(`分镜 #${message.index} 提交生成`, 'info');
+      }
+    }
+
+    if (event === 'WAITING_RENDER') {
+      if (message.mode === 'CHARACTER_BUILD') {
+        appendLog(`[角色建库] 正在等待【${message.charName || ''}】定妆图渲染就绪...`, 'info');
+      }
     }
 
     if (event === 'RENDER_PROGRESS') {
       const elapsed = message.elapsed ? ` (${message.elapsed}秒)` : '';
-      if (isVideo) el.videoBatchStatusText.textContent = `Veo 动态渲染计算中${elapsed}...`;
-      else el.imageBatchStatusText.textContent = `Flow 画板渲染生成中${elapsed}...`;
+      if (message.mode === 'CHARACTER_BUILD') {
+        if (message.elapsed && message.elapsed % 15 === 0) {
+          appendLog(`[角色建库] 定妆图生成计算中 (${message.elapsed}秒)...`, 'info');
+        }
+      } else {
+        if (isVideo) el.videoBatchStatusText.textContent = `Veo 动态渲染计算中${elapsed}...`;
+        else el.imageBatchStatusText.textContent = `Flow 画板渲染生成中${elapsed}...`;
+      }
     }
 
     if (event === 'SHOT_COMPLETED') {
