@@ -846,6 +846,8 @@
       renderGalleries();
       saveState();
       appendLog(`分镜 #${idx} 渲染完成并已归档！`, 'success');
+    }
+
     if (event === 'CHAR_BUILD_START') {
       appendLog(`[角色建库 ${message.index}/${message.total}] 开始处理角色【${message.char.name}】...`, 'info');
       showToast(`[${message.index}/${message.total}] 开始自动处理【${message.char.name}】`, 'info');
