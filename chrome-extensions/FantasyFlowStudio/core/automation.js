@@ -298,7 +298,7 @@
       console.warn('[FantasyAutomation] CDP 通信异常，回退原生:', e);
     }
 
-    // 5. 若 CDP 未能成功，或者作为双重保险，执行 DOM 级原生触发
+    // 5. 若 CDP 未能成功，执行 DOM 级原生触发
     if (!cdpSuccess) {
       submitBtn.dispatchEvent(new PointerEvent('pointerdown', opts));
       submitBtn.dispatchEvent(new MouseEvent('mousedown', opts));
@@ -307,18 +307,7 @@
       submitBtn.click();
     }
 
-    // 6. 等待并检查：若未被消费，尝试通过 CDP Enter 辅助确认提交
-    await sleep(600);
-    const editor = findPromptEditor();
-    if (editor && (editor.textContent || '').trim().length > 0) {
-      try {
-        await new Promise((resolve) => {
-          chrome.runtime.sendMessage({ type: 'CDP_PRESS_ENTER' }, resolve);
-        });
-      } catch (_) {}
-    }
-
-    await sleep(600);
+    await sleep(1000);
     return true;
   }
 
@@ -510,14 +499,27 @@
   /**
    * 轮询等待新生成结果产出（磁贴计数增加且图片/视频加载就绪）
    */
-  async function waitForNewGeneration(initialCount, timeoutMs = 120000, onProgress = null) {
+  async function waitForNewGeneration(initialTilesOrCount, timeoutMs = 120000, onProgress = null) {
     const startTime = Date.now();
+    const isCount = typeof initialTilesOrCount === 'number';
+    const initialCount = isCount ? initialTilesOrCount : (initialTilesOrCount?.size || 0);
+    const initialSet = isCount ? null : initialTilesOrCount;
+
     while (Date.now() - startTime < timeoutMs) {
       const tiles = getCanvasMediaTiles();
       const readyTiles = tiles.filter(t => t.isReady);
 
+      if (initialSet) {
+        const newTile = readyTiles.find(t => t.src && !initialSet.has(t.src) && !initialSet.has(t.id));
+        if (newTile) {
+          if (onProgress) onProgress({ status: 'done', tile: newTile });
+          return newTile;
+        }
+      }
+
       if (readyTiles.length > initialCount) {
-        const latest = readyTiles[readyTiles.length - 1];
+        // Google Flow 倒序网格：最新生成的媒体置于最前方 (index 0)
+        const latest = readyTiles[0] || readyTiles[readyTiles.length - 1];
         if (onProgress) onProgress({ status: 'done', tile: latest });
         return latest;
       }
