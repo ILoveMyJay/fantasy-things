@@ -6,6 +6,8 @@
 
 (() => {
   if (typeof window === 'undefined') return;
+  if (window.__fantasyAutomationLoaded) return;
+  window.__fantasyAutomationLoaded = true;
 
   const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -330,12 +332,73 @@
   }
 
   /**
-   * 角色重命名（支持 Flow 角色详情页或角色磁贴菜单）
+   * 在 /character 角色列表网格上，直接通过卡片菜单就地重命名（无需跳转，杜绝误退项目）
+   */
+  async function renameCharacterTile(targetName) {
+    if (!targetName) return false;
+    const tiles = [...document.querySelectorAll('flow-character-tile')];
+    if (!tiles.length) return false;
+
+    // 优先寻找「未命名的角色」或末尾卡片
+    let tile = tiles.find(t => {
+      const nameSpan = t.querySelector('.character-tile-name');
+      const txt = (nameSpan ? nameSpan.textContent : t.textContent) || '';
+      return /未命名的角色|Unnamed\s*character|未命名/i.test(txt.trim());
+    }) || tiles[tiles.length - 1];
+
+    if (!tile) return false;
+
+    // 1. 寻找卡片右上角的三点“更多选项”菜单按钮 (⋮)
+    const moreBtn = tile.querySelector('button[aria-label="更多选项"], button[aria-label="More options"], button[aria-label*="options" i]') ||
+      [...tile.querySelectorAll('button')].find(b => {
+        const sym = b.querySelector('.google-symbols')?.textContent?.trim();
+        return sym === 'more_vert' || sym === 'more_horiz';
+      });
+
+    if (moreBtn && isElementVisible(moreBtn)) {
+      await clickElement(moreBtn);
+      await sleep(350);
+
+      const renameMenuItem = [...document.querySelectorAll('.mat-mdc-menu-item, [role="menuitem"], button')].find(el =>
+        /重命名|Rename|이름\s*변경/i.test((el.textContent || '').trim())
+      );
+
+      if (renameMenuItem && isElementVisible(renameMenuItem)) {
+        await clickElement(renameMenuItem);
+        await sleep(350);
+
+        const renameInput = document.querySelector('.rename-tile-overlay input.editable-text-input, input.editable-text-input.editing, .cdk-overlay-pane input, input.editable-text-input, .rename-tile-overlay input');
+        if (renameInput) {
+          setNativeInputValue(renameInput, targetName);
+          await sleep(200);
+
+          const confirmBtn = document.querySelector('.rename-tile-overlay button[aria-label="完成"], .cdk-overlay-pane button[aria-label="完成"], button[aria-label="完成"]');
+          if (confirmBtn && isElementVisible(confirmBtn)) {
+            await clickElement(confirmBtn);
+          } else {
+            renameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+          }
+          await sleep(500);
+          console.log(`[FantasyAutomation] 成功通过卡片菜单就地重命名为【${targetName}】`);
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * 角色重命名（优先网格卡片菜单就地重命名，或详情页表单修改）
    */
   async function renameCharacter(name) {
     if (!name) return false;
 
-    // 1. 尝试角色编辑表单中的输入框
+    // 1. 若当前在卡片列表，直接通过磁贴菜单就地重命名
+    const tileRenamed = await renameCharacterTile(name);
+    if (tileRenamed) return true;
+
+    // 2. 尝试角色编辑表单中的输入框
     const formInput = document.querySelector('flow-character-form input.name-input, flow-character-edit-header input.editable-text-input, input[aria-label="角色名称"]');
     if (formInput && isElementVisible(formInput)) {
       setNativeInputValue(formInput, name);
@@ -345,32 +408,6 @@
       return true;
     }
 
-    // 2. 尝试磁贴右键/菜单重命名
-    const tile = document.querySelector('flow-character-tile');
-    if (tile) {
-      const moreBtn = tile.querySelector('button[aria-label="更多选项"], button[aria-label="More options"]');
-      if (moreBtn) {
-        await clickElement(moreBtn);
-        await sleep(200);
-
-        const renameMenuItem = [...document.querySelectorAll('[role="menuitem"], button')]
-          .find(el => /重命名|Rename|이름\s*변경/i.test(el.textContent || ''));
-        if (renameMenuItem) {
-          await clickElement(renameMenuItem);
-          await sleep(200);
-
-          const overlayInput = document.querySelector('.rename-tile-overlay input, .cdk-overlay-pane input');
-          if (overlayInput) {
-            setNativeInputValue(overlayInput, name);
-            await sleep(100);
-            overlayInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
-            const confirmBtn = document.querySelector('.rename-tile-overlay button[aria-label="完成"]');
-            if (confirmBtn) await clickElement(confirmBtn);
-            return true;
-          }
-        }
-      }
-    }
     return false;
   }
 
@@ -405,11 +442,31 @@
   }
 
   /**
-   * 返回角色列表
+   * 从角色创建/编辑页面返回到角色列表页面
+   * 注意：严禁在 /character 角色列表视图中触发，防止误点项目导航栏的「返回项目列表」按钮！
    */
   async function returnToCharacterList() {
-    const backBtn = document.querySelector('flow-character-edit-header button[aria-label="返回"], button[aria-label="返回"], button.back-button') ||
-      [...document.querySelectorAll('button')].find(b => (b.querySelector('.google-symbols')?.textContent || '').trim() === 'arrow_back');
+    // 检查是否处于创建视图（包含「新角色」标题或描述输入框）或编辑视图 (/character/<id>)
+    const isEditingOrCreating = /\/character\/[a-zA-Z0-9_-]+/.test(window.location.pathname) ||
+      !!document.querySelector('flow-character-edit-header, flow-create-character-footer, flow-character-prompt-input');
+
+    // 如果当前已经是角色列表网格（可见 flow-character-tile 或包含新角色按钮且无编辑页头），切勿点击返回！
+    const isListGrid = !!document.querySelector('flow-character-tile, button.custom-tile-container') &&
+      !document.querySelector('flow-character-edit-header, flow-create-character-footer');
+
+    if (isListGrid && !isEditingOrCreating) {
+      console.log('[FantasyAutomation] 当前已在角色列表，无需返回');
+      return;
+    }
+
+    // 仅限在角色编辑或创建容器内部寻找返回按钮，严禁在项目主导航查找 arrow_back！
+    const editContainer = document.querySelector('flow-character-edit-header, flow-create-character-header, .character-edit-view');
+    let backBtn = null;
+    if (editContainer) {
+      backBtn = editContainer.querySelector('button[aria-label="返回"], button[aria-label="Back"], button.back-button') ||
+        [...editContainer.querySelectorAll('button')].find(b => (b.querySelector('.google-symbols')?.textContent || '').trim() === 'arrow_back');
+    }
+
     if (backBtn && isElementVisible(backBtn)) {
       await clickElement(backBtn);
       await sleep(800);
@@ -434,15 +491,14 @@
       return { ok: true, skipped: true };
     }
 
-    // 3. 如果已有待命名的角色卡片，直接进入编辑更名
+    // 3. ★ 核心优化：若已有待命名的角色卡片，直接在网格上就地正名！绝不进入详情页，绝不点返回！
     const unnamedTile = existingTiles.find(t => /未命名的角色|Unnamed/i.test(t.textContent || ''));
     if (unnamedTile) {
-      console.log(`[FantasyAutomation] 发现待命名角色卡片，进入更名为【${targetName}】...`);
-      await clickElement(unnamedTile);
-      await sleep(1000);
-      await renameCharacter(targetName);
-      await returnToCharacterList();
-      return { ok: true, renamed: true };
+      console.log(`[FantasyAutomation] 发现待命名角色卡片，直接在卡片上就地正名为【${targetName}】...`);
+      const renamed = await renameCharacterTile(targetName);
+      if (renamed) {
+        return { ok: true, renamed: true };
+      }
     }
 
     // 4. 如果页面处于角色列表视图，点击「新角色」按钮以打开创建视图
@@ -763,6 +819,7 @@
     clickElement,
     clickSubmit,
     setNativeInputValue,
+    renameCharacterTile,
     renameCharacter,
     navigateToCharacterPage,
     returnToCharacterList,

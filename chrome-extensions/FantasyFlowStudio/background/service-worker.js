@@ -160,6 +160,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
       try {
+        const [check] = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => !!window.__fantasyPipelineLoaded
+        }).catch(() => [{}]);
+
+        if (check?.result) {
+          sendResponse({ ok: true, alreadyLoaded: true });
+          return;
+        }
+
         await chrome.scripting.executeScript({
           target: { tabId },
           world: 'MAIN',

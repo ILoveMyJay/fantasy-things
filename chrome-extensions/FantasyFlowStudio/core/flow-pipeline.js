@@ -5,6 +5,11 @@
 
 (() => {
   if (typeof window === 'undefined') return;
+  if (window.__fantasyPipelineLoaded) {
+    console.log('[FantasyPipeline] Already loaded, skipping duplicate registration.');
+    return;
+  }
+  window.__fantasyPipelineLoaded = true;
 
   let activePipeline = null;
   let isPaused = false;
@@ -344,14 +349,16 @@
         console.warn(`[FantasyPipeline] 角色【${char.name}】导入 Flow 角色库提示:`, err?.message);
       }
 
-      // 角色之间的随机间隔 (模拟真人，1.5~2.5秒)
-      const randomDelay = Math.floor(1500 + Math.random() * 1000);
-      notifySidepanel('CHAR_BUILD_DELAY', {
-        index: charIndex,
-        charName: char.name,
-        delaySeconds: (randomDelay / 1000).toFixed(1)
-      });
-      await window.FantasyAutomation.sleep(randomDelay);
+      if (i < characters.length - 1) {
+        // 角色之间的随机间隔 (模拟真人，1.5~2.5秒)
+        const randomDelay = Math.floor(1500 + Math.random() * 1000);
+        notifySidepanel('CHAR_BUILD_DELAY', {
+          index: charIndex,
+          charName: char.name,
+          delaySeconds: (randomDelay / 1000).toFixed(1)
+        });
+        await window.FantasyAutomation.sleep(randomDelay);
+      }
     }
 
     notifySidepanel('CHAR_SYNC_ALL_COMPLETED', { total: characters.length });

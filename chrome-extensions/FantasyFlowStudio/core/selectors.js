@@ -4,7 +4,7 @@
  * Note: All CSS selectors must be standard browser-compliant (no jQuery pseudo-selectors like :contains or :has-text).
  */
 
-const FANTASY_SELECTORS = {
+var FANTASY_SELECTORS = window.FANTASY_SELECTORS || {
   // 提示词输入框
   PROMPT_EDITOR: '[contenteditable="true"][data-slate-editor="true"], .ProseMirror[contenteditable="true"], div[contenteditable="true"], [contenteditable="true"]',
 

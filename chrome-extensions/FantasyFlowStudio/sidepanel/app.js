@@ -97,15 +97,35 @@
     toastContainer: document.getElementById('toastContainer')
   };
 
+  let lastToastMessage = '';
+  let lastToastTime = 0;
+
   function showToast(message, type = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.textContent = message;
-    el.toastContainer.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      setTimeout(() => toast.remove(), 250);
-    }, 3200);
+    if (!message) return;
+    const now = Date.now();
+    // 1.5 秒内相同消息去重防刷屏
+    if (message === lastToastMessage && now - lastToastTime < 1500) {
+      return;
+    }
+    lastToastMessage = message;
+    lastToastTime = now;
+
+    // 限制界面最多同时保留 3 条 Toast，避免堆积遮挡
+    if (el.toastContainer) {
+      const activeToasts = el.toastContainer.querySelectorAll('.toast');
+      if (activeToasts.length >= 3) {
+        activeToasts[0].remove();
+      }
+
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.textContent = message;
+      el.toastContainer.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 250);
+      }, 3000);
+    }
   }
 
   function appendLog(text, level = 'info') {
@@ -126,8 +146,6 @@
         state.activeTabId = tab.id;
         el.connectionStatus.className = 'connection-status connected';
         el.connectionStatus.querySelector('.status-text').textContent = '已连接 Google Flow';
-        // 确保 content scripts 与 bridge 注入
-        chrome.runtime.sendMessage({ type: 'ENSURE_CONTENT_SCRIPTS', tabId: tab.id }).catch(() => {});
         return true;
       } else {
         state.activeTabId = null;
