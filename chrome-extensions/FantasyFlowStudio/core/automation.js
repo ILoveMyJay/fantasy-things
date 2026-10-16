@@ -375,6 +375,226 @@
   }
 
   /**
+   * 确保进入 Google Flow 角色管理/创建页面 (/character)
+   */
+  async function navigateToCharacterPage() {
+    if (window.location.pathname.endsWith('/character')) return true;
+
+    // 寻找左侧项目导航栏中的「角色」链接或按钮
+    const charNavBtn = document.querySelector('a[href*="/character"]') ||
+      [...document.querySelectorAll('button, div[role="button"], flow-nav-item, li')].find(el => {
+        const txt = (el.textContent || '').trim();
+        const sym = el.querySelector('.google-symbols')?.textContent?.trim() || '';
+        return txt.includes('角色') || sym === 'accessibility_new';
+      });
+
+    if (charNavBtn) {
+      await clickElement(charNavBtn);
+      await sleep(1200);
+      return true;
+    }
+
+    // 路由跳转兜底
+    const match = window.location.href.match(/\/project\/([a-zA-Z0-9_-]+)/);
+    if (match) {
+      window.location.href = `https://flow.google.com/project/${match[1]}/character`;
+      await sleep(1500);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 返回角色列表
+   */
+  async function returnToCharacterList() {
+    const backBtn = document.querySelector('flow-character-edit-header button[aria-label="返回"], button[aria-label="返回"], button.back-button') ||
+      [...document.querySelectorAll('button')].find(b => (b.querySelector('.google-symbols')?.textContent || '').trim() === 'arrow_back');
+    if (backBtn && isElementVisible(backBtn)) {
+      await clickElement(backBtn);
+      await sleep(800);
+    }
+  }
+
+  /**
+   * 将画板上的定妆图导入为正式的 Flow 角色库实体并正名
+   */
+  async function syncCharacterToFlowLibrary(char, options = {}) {
+    const targetName = char.name || '未命名角色';
+
+    // 1. 确保在 /character 页面
+    await navigateToCharacterPage();
+    await sleep(600);
+
+    // 2. 检查角色库是否已存在同名角色
+    const existingTiles = [...document.querySelectorAll('flow-character-tile')];
+    const alreadyBuilt = existingTiles.find(t => (t.textContent || '').includes(targetName));
+    if (alreadyBuilt) {
+      console.log(`[FantasyAutomation] 角色【${targetName}】已在 Flow 角色库中存在，跳过导入`);
+      return { ok: true, skipped: true };
+    }
+
+    // 3. 如果已有待命名的角色卡片，直接进入编辑更名
+    const unnamedTile = existingTiles.find(t => /未命名的角色|Unnamed/i.test(t.textContent || ''));
+    if (unnamedTile) {
+      console.log(`[FantasyAutomation] 发现待命名角色卡片，进入更名为【${targetName}】...`);
+      await clickElement(unnamedTile);
+      await sleep(1000);
+      await renameCharacter(targetName);
+      await returnToCharacterList();
+      return { ok: true, renamed: true };
+    }
+
+    // 4. 如果页面处于角色列表视图，点击「新角色」按钮以打开创建视图
+    const newCharBtn = [...document.querySelectorAll('button')].find(b => {
+      const txt = (b.textContent || '').trim();
+      return /新角色|New\s*character/i.test(txt);
+    }) || document.querySelector('button.custom-tile-container');
+    if (newCharBtn && isElementVisible(newCharBtn)) {
+      await clickElement(newCharBtn);
+      await sleep(800);
+    }
+
+    // 5. 点击「+ 从项目中添加」按钮 (若弹窗未处于打开状态)
+    const isModalOpen = !!document.querySelector('div[role="dialog"][data-state="open"], .cdk-overlay-pane [role="dialog"], div[role="dialog"]');
+    if (!isModalOpen) {
+      let addFromProjectBtn = null;
+      const startWait = Date.now();
+      while (Date.now() - startWait < 6000) {
+        addFromProjectBtn = [...document.querySelectorAll('button')].find(b => {
+          const txt = (b.textContent || '').trim();
+          return /从项目中添加|Add\s*from\s*project|프로젝트에서\s*추가/i.test(txt);
+        }) || document.querySelector('flow-create-character-footer button:last-child');
+        if (addFromProjectBtn && isElementVisible(addFromProjectBtn)) break;
+        await sleep(250);
+      }
+
+      if (!addFromProjectBtn) {
+        throw new Error('未在 Flow 角色页面找到「从项目中添加」按钮，请确认处于角色页面');
+      }
+
+      await clickElement(addFromProjectBtn);
+      await sleep(800);
+    }
+
+    // 6. 等待项目素材选择弹窗加载
+    let assetOptions = [];
+    const modalWait = Date.now();
+    while (Date.now() - modalWait < 8000) {
+      assetOptions = [...document.querySelectorAll('[role="option"], div[class*="asset-item"], .asset-item, div[data-item-index], [data-item-index]')].filter(isElementVisible);
+      if (assetOptions.length > 0) break;
+      await sleep(300);
+    }
+
+    if (assetOptions.length === 0) {
+      throw new Error('未在项目中找到已生成的定妆图素材，请先运行定妆图渲染');
+    }
+
+    // 7. 在素材弹窗中精准匹配该角色的定妆图
+    const normName = targetName.toLowerCase();
+    let matchedOption = assetOptions.find(opt => {
+      const txt = (opt.textContent || '').toLowerCase();
+      const alt = (opt.querySelector('img')?.alt || '').toLowerCase();
+      return txt.includes(normName) || alt.includes(normName);
+    });
+
+    if (!matchedOption && char.turnaroundPrompt) {
+      const snippet = char.turnaroundPrompt.slice(0, 30).toLowerCase();
+      matchedOption = assetOptions.find(opt => {
+        const txt = (opt.textContent || '').toLowerCase();
+        const alt = (opt.querySelector('img')?.alt || '').toLowerCase();
+        return txt.includes(snippet) || alt.includes(snippet);
+      });
+    }
+
+    // 兜底：按索引顺序选择或首张可用定妆图
+    if (!matchedOption) {
+      const charIndex = options.index || 0;
+      matchedOption = assetOptions[charIndex] || assetOptions[0];
+    }
+
+    await clickElement(matchedOption);
+    await sleep(400);
+
+    // 点击弹窗中的「添加媒体 / 添加到提示」确认按钮
+    const ADD_BTN_REGEX = /添加媒体|添加到提示|添加到画板|Add\s*media|Add\s*to\s*prompt/i;
+    let confirmBtn = [...document.querySelectorAll('div[role="dialog"] button, button')].find(b => {
+      if (!isElementVisible(b) || b.disabled) return false;
+      return ADD_BTN_REGEX.test((b.textContent || '').trim());
+    });
+    if (!confirmBtn) {
+      const dialog = document.querySelector('div[role="dialog"]');
+      if (dialog) {
+        const btns = [...dialog.querySelectorAll('button')].filter(b => isElementVisible(b) && !b.disabled);
+        confirmBtn = btns[btns.length - 1];
+      }
+    }
+    if (confirmBtn) {
+      await clickElement(confirmBtn);
+      await sleep(800);
+    }
+
+    // 8. 填入角色名称与描述
+    const nameInput = document.querySelector('flow-character-form input.name-input, input[aria-label="角色名称"], input[placeholder="角色名称"], flow-character-edit-header input.editable-text-input');
+    if (nameInput) {
+      setNativeInputValue(nameInput, targetName);
+      await sleep(200);
+    }
+
+    const editor = document.querySelector('flow-character-prompt-input [contenteditable="true"], flow-create-character-footer [contenteditable="true"], .ProseMirror[contenteditable="true"], [contenteditable="true"][data-slate-editor="true"], textarea');
+    if (editor && !editor.textContent?.trim()) {
+      editor.focus();
+      document.execCommand('selectAll', false, null);
+      document.execCommand('insertText', false, char.prompt || targetName);
+      editor.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      await sleep(300);
+    }
+
+    // 9. 提交创建角色
+    await clickSubmit();
+    await sleep(1500);
+
+    // 10. 轮询等待 Flow 角色建模完成（出现「完成修改」按钮）
+    const waitBuildStart = Date.now();
+    let saveSuccess = false;
+    while (Date.now() - waitBuildStart < 60000) {
+      const doneBtn = [...document.querySelectorAll('button')].find(b => {
+        if (!isElementVisible(b) || b.disabled) return false;
+        const txt = (b.textContent || '').trim();
+        const aria = b.getAttribute('aria-label') || '';
+        return /完成修改|完成|保存|Save|Done/i.test(txt) || /完成修改|完成|保存|Save|Done/i.test(aria) ||
+          b.querySelector('.google-symbols')?.textContent?.trim() === 'check';
+      });
+
+      if (doneBtn && isElementVisible(doneBtn)) {
+        // 保存前再次确保名字正确
+        const curNameInput = document.querySelector('flow-character-form input.name-input, input[aria-label="角色名称"], input[placeholder="角色名称"], flow-character-edit-header input.editable-text-input');
+        if (curNameInput && curNameInput.value !== targetName) {
+          setNativeInputValue(curNameInput, targetName);
+          await sleep(200);
+        }
+
+        await clickElement(doneBtn);
+        await sleep(1200);
+        saveSuccess = true;
+        break;
+      }
+      await sleep(1000);
+    }
+
+    // 11. 返回角色列表
+    await returnToCharacterList();
+    await sleep(800);
+
+    // 12. 角色卡片更名二次校验（若列表卡片仍为“未命名的角色”，触发卡片菜单重命名）
+    try {
+      await renameCharacter(targetName);
+    } catch (_) {}
+
+    return { ok: true, name: targetName, saveSuccess };
+  }
+
+  /**
    * 打开素材选择弹窗（点击 '+' 按钮或输入 '@'）
    */
   async function openAssetPickerModal() {
@@ -544,6 +764,9 @@
     clickSubmit,
     setNativeInputValue,
     renameCharacter,
+    navigateToCharacterPage,
+    returnToCharacterList,
+    syncCharacterToFlowLibrary,
     openAssetPickerModal,
     selectAssetInModal,
     switchFlowMode,

@@ -237,6 +237,9 @@
   /**
    * 3. 全自动角色建库流水线 (自动生成 4 视角定妆图 + 随机延时 + 自动更名正名)
    */
+  /**
+   * 3. 全自动角色建库流水线 (阶段1：生成4面定妆图 -> 阶段2：导入Flow角色库并正名)
+   */
   async function runAutoBuildCharactersPipeline(characters = [], options = {}) {
     isPaused = false;
     isStopped = false;
@@ -245,6 +248,7 @@
     notifySidepanel('BATCH_STARTED', { mode: 'CHARACTER_BUILD', total: characters.length });
 
     try {
+      // 阶段 1：画板 4 视角定妆图渲染
       await window.FantasyAutomation.switchFlowMode('IMAGE');
       await window.FantasyAutomation.sleep(500);
 
@@ -284,24 +288,6 @@
         char.turnaroundImageUrl = newMedia.src;
         char.status = 'COMPLETED';
 
-        // 4. 随机等待间隔 (模拟真人，让 Flow DOM 充分提交就绪)
-        const randomDelay = Math.floor(2200 + Math.random() * 2000);
-        notifySidepanel('CHAR_BUILD_DELAY', {
-          index: charIndex,
-          charName: char.name,
-          delaySeconds: (randomDelay / 1000).toFixed(1)
-        });
-        await window.FantasyAutomation.sleep(randomDelay);
-
-        // 5. 自动更名 (穿透受控组件，改名为正名)
-        notifySidepanel('CHAR_BUILD_RENAMING', { index: charIndex, charName: char.name });
-        try {
-          await window.FantasyAutomation.renameCharacter(char.name);
-          await window.FantasyAutomation.sleep(800);
-        } catch (err) {
-          console.warn('[FantasyPipeline] 自动更名提示:', err?.message);
-        }
-
         notifySidepanel('CHAR_BUILD_COMPLETED', {
           index: charIndex,
           total: characters.length,
@@ -309,12 +295,14 @@
           mediaUrl: newMedia.src
         });
 
-        // 角色之间的随机间隔 (3~5 秒)
         if (i < characters.length - 1) {
-          const nextCharDelay = Math.floor(3000 + Math.random() * 2000);
+          const nextCharDelay = Math.floor(2000 + Math.random() * 1500);
           await window.FantasyAutomation.sleep(nextCharDelay);
         }
       }
+
+      // 阶段 2：全自动将定妆图导入为 Flow「角色」库实体并正名
+      await runSyncCharactersPipeline(characters, options);
 
       notifySidepanel('BATCH_ALL_COMPLETED', { mode: 'CHARACTER_BUILD', characters });
     } catch (err) {
@@ -325,10 +313,61 @@
     }
   }
 
+  /**
+   * 4. 纯角色库导入与正名流水线 (当画板已有定妆图时，直接导入为 Flow 角色实体)
+   */
+  async function runSyncCharactersPipeline(characters = [], options = {}) {
+    isPaused = false;
+    isStopped = false;
+
+    notifySidepanel('CHAR_SYNC_START', { total: characters.length });
+
+    for (let i = 0; i < characters.length; i++) {
+      await checkControlSignal();
+      const char = characters[i];
+      const charIndex = i + 1;
+
+      notifySidepanel('CHAR_BUILD_RENAMING', {
+        index: charIndex,
+        total: characters.length,
+        charName: char.name
+      });
+
+      try {
+        await window.FantasyAutomation.syncCharacterToFlowLibrary(char, { index: i });
+        notifySidepanel('CHAR_SYNC_COMPLETED', {
+          index: charIndex,
+          total: characters.length,
+          charName: char.name
+        });
+      } catch (err) {
+        console.warn(`[FantasyPipeline] 角色【${char.name}】导入 Flow 角色库提示:`, err?.message);
+      }
+
+      // 角色之间的随机间隔 (模拟真人，1.5~2.5秒)
+      const randomDelay = Math.floor(1500 + Math.random() * 1000);
+      notifySidepanel('CHAR_BUILD_DELAY', {
+        index: charIndex,
+        charName: char.name,
+        delaySeconds: (randomDelay / 1000).toFixed(1)
+      });
+      await window.FantasyAutomation.sleep(randomDelay);
+    }
+
+    notifySidepanel('CHAR_SYNC_ALL_COMPLETED', { total: characters.length });
+  }
+
   // 监听 Sidepanel 与 Background 控制指令
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'START_CHARACTERS_BUILD') {
       runAutoBuildCharactersPipeline(message.characters, message.options)
+        .then(() => sendResponse({ ok: true }))
+        .catch(err => sendResponse({ ok: false, error: err.message }));
+      return true;
+    }
+
+    if (message.type === 'START_CHARACTERS_SYNC') {
+      runSyncCharactersPipeline(message.characters, message.options)
         .then(() => sendResponse({ ok: true }))
         .catch(err => sendResponse({ ok: false, error: err.message }));
       return true;
@@ -371,8 +410,9 @@
     }
 
     if (message.type === 'RENAME_CHARACTER') {
-      window.FantasyAutomation.renameCharacter(message.name)
-        .then(ok => sendResponse({ ok }))
+      const char = { name: message.name };
+      window.FantasyAutomation.syncCharacterToFlowLibrary(char)
+        .then(res => sendResponse({ ok: true, res }))
         .catch(err => sendResponse({ ok: false, error: err.message }));
       return true;
     }

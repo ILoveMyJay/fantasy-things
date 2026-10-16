@@ -36,6 +36,7 @@
     btnLoadDemoScript: document.getElementById('btnLoadDemoScript'),
     btnAnalyzeCharacters: document.getElementById('btnAnalyzeCharacters'),
     btnAutoBuildAllCharacters: document.getElementById('btnAutoBuildAllCharacters'),
+    btnSyncCharactersToLibrary: document.getElementById('btnSyncCharactersToLibrary'),
     charactersList: document.getElementById('charactersList'),
     charCountBadge: document.getElementById('charCountBadge'),
     btnGoToStep2: document.getElementById('btnGoToStep2'),
@@ -234,10 +235,10 @@
         <div class="char-dna">${c.dna}</div>
         <div class="char-actions">
           <button class="btn-secondary btn-generate-turnaround" data-index="${i}">
-            🎨 在 Flow 中渲染【${c.name}】四面定妆图 (可选)
+            🎨 在画板渲染【${c.name}】定妆图
           </button>
-          <button class="btn-secondary btn-rename-flow-char" data-name="${c.name}">
-            🏷 将 Flow 角色名修改为「${c.name}」
+          <button class="btn-secondary btn-rename-flow-char" data-name="${c.name}" data-index="${i}">
+            📥 导入角色库并正名为「${c.name}」
           </button>
         </div>
       </div>
@@ -275,17 +276,26 @@
     el.charactersList.querySelectorAll('.btn-rename-flow-char').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const name = e.currentTarget.dataset.name;
+        const idx = parseInt(e.currentTarget.dataset.index, 10);
+        const char = state.characters[idx] || { name };
         const connected = await checkActiveTab();
-        if (!connected) { showToast('请在 Flow 角色管理页面操作', 'error'); return; }
+        if (!connected) { showToast('请在 Flow 页面中操作', 'error'); return; }
+
+        const origText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<span>⏳</span> 正在将【${name}】导入角色库...`;
 
         chrome.tabs.sendMessage(state.activeTabId, {
-          type: 'RENAME_CHARACTER',
-          name
+          type: 'START_CHARACTERS_SYNC',
+          characters: [char],
+          options: { index: idx }
         }, (res) => {
+          btn.disabled = false;
+          btn.innerHTML = origText;
           if (res?.ok) {
-            showToast(`成功将角色更名为「${name}」！`, 'success');
+            showToast(`成功将【${name}】导入 Flow 角色库并正名！`, 'success');
           } else {
-            showToast(`更名响应: ${res?.error || '请确认当前处于角色编辑或磁贴页面'}`, 'warn');
+            showToast(`导入响应: ${res?.error || '请确认当前处于 Flow 项目页面'}`, 'warn');
           }
         });
       });
@@ -445,8 +455,42 @@
         }, (res) => {
           if (!res?.ok) {
             el.btnAutoBuildAllCharacters.disabled = false;
-            el.btnAutoBuildAllCharacters.innerHTML = '<span>⚡</span> 一键全自动建库：渲染定妆图 + 随机间隔更名';
+            el.btnAutoBuildAllCharacters.innerHTML = '<span>⚡</span> 一键全自动建库：渲染定妆图 + 导入角色库正名';
             showToast(`启动失败: ${res?.error || '无法与画板建立通信'}`, 'error');
+          }
+        });
+      });
+    }
+
+    // 一键将已有定妆图导入角色库并正名
+    if (el.btnSyncCharactersToLibrary) {
+      el.btnSyncCharactersToLibrary.addEventListener('click', async () => {
+        if (!state.characters.length) {
+          showToast('请先解析出故事角色设定', 'warn');
+          return;
+        }
+        const connected = await checkActiveTab();
+        if (!connected) {
+          showToast('请在 Flow 页面中操作', 'error');
+          return;
+        }
+
+        const origHtml = el.btnSyncCharactersToLibrary.innerHTML;
+        el.btnSyncCharactersToLibrary.disabled = true;
+        el.btnSyncCharactersToLibrary.innerHTML = '<span>⏳</span> 正在将画板角色导入 Flow 角色库并正名...';
+        appendLog(`🚀 启动画板已有定妆图入库与正名流程，共 ${state.characters.length} 个角色...`, 'info');
+
+        chrome.tabs.sendMessage(state.activeTabId, {
+          type: 'START_CHARACTERS_SYNC',
+          characters: state.characters,
+          options: { autoDownload: false }
+        }, (res) => {
+          el.btnSyncCharactersToLibrary.disabled = false;
+          el.btnSyncCharactersToLibrary.innerHTML = origHtml;
+          if (res?.ok) {
+            showToast('已向 Flow 启动角色库导入与正名！', 'info');
+          } else {
+            showToast(`启动失败: ${res?.error || '无法与 Flow 建立通信'}`, 'error');
           }
         });
       });
@@ -881,6 +925,25 @@
       appendLog(`[角色建库] 角色【${message.char.name}】四面定妆图与正名已顺利完成！`, 'success');
       showToast(`角色【${message.char.name}】建库完成！`, 'success');
       saveState();
+    }
+
+    if (event === 'CHAR_SYNC_START') {
+      appendLog(`[角色入库] 正在将画板定妆图批量登记至 Flow 角色库 (共 ${message.total} 个)...`, 'info');
+      showToast('开始自动登记至 Flow 角色库...', 'info');
+    }
+
+    if (event === 'CHAR_SYNC_COMPLETED') {
+      appendLog(`[角色入库 ${message.index}/${message.total}] 角色【${message.charName}】已成功登记入库并正名！`, 'success');
+      showToast(`角色【${message.charName}】建库正名完成！`, 'success');
+    }
+
+    if (event === 'CHAR_SYNC_ALL_COMPLETED') {
+      appendLog(`🎉 恭喜！所有角色已成功同步登记至 Flow 角色库并正名！`, 'success');
+      showToast('🎉 所有角色已成功登记入库并正名！', 'success');
+      if (el.btnSyncCharactersToLibrary) {
+        el.btnSyncCharactersToLibrary.disabled = false;
+        el.btnSyncCharactersToLibrary.innerHTML = '<span>✅</span> 角色已全部入库正名';
+      }
     }
 
     if (event === 'BATCH_ALL_COMPLETED') {

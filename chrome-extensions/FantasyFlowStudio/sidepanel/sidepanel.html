@@ -83,9 +83,12 @@
           </div>
           <p class="section-desc">已成功提炼剧本角色视觉 DNA。您可点击下方按钮一键全自动向 Flow 建库（全自动渲染四面定妆图，并在随机延迟后自动为角色正名），也可单独操作单个角色。</p>
           
-          <div class="action-bar" style="margin-top:2px;">
+          <div class="action-bar" style="margin-top:2px;display:flex;flex-direction:column;gap:8px;">
             <button class="btn-primary" id="btnAutoBuildAllCharacters" style="width:100%;background:linear-gradient(135deg, #4f46e5, #06b6d4);">
-              <span>⚡</span> 一键全自动建库：渲染定妆图 + 随机间隔更名
+              <span>⚡</span> 一键全自动建库：渲染定妆图 + 导入角色库正名
+            </button>
+            <button class="btn-secondary" id="btnSyncCharactersToLibrary" style="width:100%;border-color:#38bdf8;color:#38bdf8;">
+              <span>📥</span> 一键将画板定妆图入库正名 (已有定妆图时使用)
             </button>
           </div>
 
