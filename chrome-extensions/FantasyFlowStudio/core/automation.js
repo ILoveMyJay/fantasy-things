@@ -334,49 +334,65 @@
   /**
    * 在 /character 角色列表网格上，直接通过卡片菜单就地重命名（无需跳转，杜绝误退项目）
    */
-  async function renameCharacterTile(targetName) {
+  async function renameCharacterTile(targetName, options = {}) {
     if (!targetName) return false;
-    const tiles = [...document.querySelectorAll('flow-character-tile')];
+
+    // 1. 等待卡片就绪 (最多等待 3 秒)
+    let tiles = [];
+    const waitTileStart = Date.now();
+    while (Date.now() - waitTileStart < 3000) {
+      tiles = [...document.querySelectorAll('flow-character-tile, [class*="character-tile"], flow-character-card')];
+      if (tiles.length > 0) break;
+      await sleep(250);
+    }
     if (!tiles.length) return false;
 
-    // 优先寻找「未命名的角色」或末尾卡片
-    let tile = tiles.find(t => {
-      const nameSpan = t.querySelector('.character-tile-name');
-      const txt = (nameSpan ? nameSpan.textContent : t.textContent) || '';
-      return /未命名的角色|Unnamed\s*character|未命名/i.test(txt.trim());
-    }) || tiles[tiles.length - 1];
+    // 2. 优先寻找「未命名的角色」卡片；若指定了索引则支持指定；兜底取末尾卡片
+    let tile = null;
+    if (typeof options.index === 'number' && tiles[options.index]) {
+      tile = tiles[options.index];
+    } else {
+      tile = tiles.find(t => {
+        const nameSpan = t.querySelector('.character-tile-name, [class*="name"]');
+        const txt = (nameSpan ? nameSpan.textContent : t.textContent) || '';
+        return /未命名的角色|Unnamed\s*character|未命名/i.test(txt.trim());
+      }) || tiles[tiles.length - 1];
+    }
 
     if (!tile) return false;
 
-    // 1. 寻找卡片右上角的三点“更多选项”菜单按钮 (⋮)
-    const moreBtn = tile.querySelector('button[aria-label="更多选项"], button[aria-label="More options"], button[aria-label*="options" i]') ||
+    // 3. 寻找卡片右上角的三点“更多选项”菜单按钮 (⋮)
+    const moreBtn = tile.querySelector('button[aria-label*="更多" i], button[aria-label*="More" i], button[aria-label*="option" i]') ||
       [...tile.querySelectorAll('button')].find(b => {
-        const sym = b.querySelector('.google-symbols')?.textContent?.trim();
+        const sym = (b.querySelector('.google-symbols, i, span')?.textContent || '').trim();
         return sym === 'more_vert' || sym === 'more_horiz';
-      });
+      }) || [...tile.querySelectorAll('button')].pop();
 
     if (moreBtn && isElementVisible(moreBtn)) {
       await clickElement(moreBtn);
       await sleep(350);
 
-      const renameMenuItem = [...document.querySelectorAll('.mat-mdc-menu-item, [role="menuitem"], button')].find(el =>
-        /重命名|Rename|이름\s*변경/i.test((el.textContent || '').trim())
-      );
+      const renameMenuItem = [...document.querySelectorAll('.mat-mdc-menu-item, [role="menuitem"], button, div')].find(el => {
+        const txt = (el.textContent || '').trim();
+        return /^(重命名|Rename|이름\s*변경)$/i.test(txt) || /重命名|Rename/i.test(txt);
+      });
 
       if (renameMenuItem && isElementVisible(renameMenuItem)) {
         await clickElement(renameMenuItem);
         await sleep(350);
 
-        const renameInput = document.querySelector('.rename-tile-overlay input.editable-text-input, input.editable-text-input.editing, .cdk-overlay-pane input, input.editable-text-input, .rename-tile-overlay input');
+        const renameInput = document.querySelector('.rename-tile-overlay input, .cdk-overlay-pane input, input.editable-text-input, input[aria-label*="名称" i], input[placeholder*="名称" i]');
         if (renameInput) {
           setNativeInputValue(renameInput, targetName);
           await sleep(200);
 
-          const confirmBtn = document.querySelector('.rename-tile-overlay button[aria-label="完成"], .cdk-overlay-pane button[aria-label="完成"], button[aria-label="完成"]');
+          const confirmBtn = document.querySelector('.rename-tile-overlay button[aria-label="完成"], .cdk-overlay-pane button[aria-label="完成"], button[aria-label="完成"], button[aria-label="Done"]');
           if (confirmBtn && isElementVisible(confirmBtn)) {
             await clickElement(confirmBtn);
           } else {
             renameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+            renameInput.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+            renameInput.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
           }
           await sleep(500);
           console.log(`[FantasyAutomation] 成功通过卡片菜单就地重命名为【${targetName}】`);
@@ -547,13 +563,27 @@
     }
 
     // 7. 在素材弹窗中精准匹配该角色的定妆图
-    const normName = targetName.toLowerCase();
-    let matchedOption = assetOptions.find(opt => {
-      const txt = (opt.textContent || '').toLowerCase();
-      const alt = (opt.querySelector('img')?.alt || '').toLowerCase();
-      return txt.includes(normName) || alt.includes(normName);
-    });
+    let matchedOption = null;
 
+    // 优先：若有定妆图精确 URL，直接比对图片地址
+    if (char.turnaroundImageUrl) {
+      matchedOption = assetOptions.find(opt => {
+        const img = opt.querySelector('img');
+        return img && (img.src === char.turnaroundImageUrl || char.turnaroundImageUrl.includes(img.src) || img.src.includes(char.turnaroundImageUrl));
+      });
+    }
+
+    // 次选：匹配角色中文名、代码(MCR/SC1)或角色标签
+    if (!matchedOption) {
+      const candidates = [targetName, char.code, char.role].filter(Boolean).map(s => s.toLowerCase());
+      matchedOption = assetOptions.find(opt => {
+        const txt = (opt.textContent || '').toLowerCase();
+        const alt = (opt.querySelector('img')?.alt || '').toLowerCase();
+        return candidates.some(c => txt.includes(c) || alt.includes(c));
+      });
+    }
+
+    // 三选：匹配 4 视角提示词中的关键描述片段
     if (!matchedOption && char.turnaroundPrompt) {
       const snippet = char.turnaroundPrompt.slice(0, 30).toLowerCase();
       matchedOption = assetOptions.find(opt => {
@@ -563,10 +593,11 @@
       });
     }
 
-    // 兜底：按索引顺序选择或首张可用定妆图
+    // 兜底：Google Flow 项目素材为倒序排列（最新在前），按时序计算对应索引
     if (!matchedOption) {
-      const charIndex = options.index || 0;
-      matchedOption = assetOptions[charIndex] || assetOptions[0];
+      const charIndex = typeof options.index === 'number' ? options.index : 0;
+      const total = options.total || assetOptions.length;
+      matchedOption = assetOptions[Math.max(0, (total - 1) - charIndex)] || assetOptions[charIndex] || assetOptions[0];
     }
 
     await clickElement(matchedOption);
@@ -607,7 +638,14 @@
     }
 
     // 9. 提交创建角色
-    await clickSubmit();
+    try {
+      await clickSubmit();
+    } catch (submitErr) {
+      console.warn('[FantasyAutomation] clickSubmit 异常，尝试在输入框按回车提交:', submitErr?.message);
+      if (editor) {
+        editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      }
+    }
     await sleep(1500);
 
     // 10. 轮询等待 Flow 角色建模完成（出现「完成修改」按钮）
@@ -642,9 +680,9 @@
     await returnToCharacterList();
     await sleep(800);
 
-    // 12. 角色卡片更名二次校验（若列表卡片仍为“未命名的角色”，触发卡片菜单重命名）
+    // 12. 角色卡片更名二次校验（若列表卡片仍为“未命名的角色”，触发卡片菜单就地重命名）
     try {
-      await renameCharacter(targetName);
+      await renameCharacterTile(targetName, options);
     } catch (_) {}
 
     return { ok: true, name: targetName, saveSuccess };
@@ -773,15 +811,28 @@
   }
 
   /**
-   * 轮询等待新生成结果产出（磁贴计数增加且图片/视频加载就绪）
+   * 轮询等待新生成结果产出（支持精确 Set 比对、数量递增检测与即时中断响应）
    */
-  async function waitForNewGeneration(initialTilesOrCount, timeoutMs = 120000, onProgress = null) {
+  async function waitForNewGeneration(initialTilesOrCount, timeoutMs = 120000, onProgress = null, abortCheck = null) {
     const startTime = Date.now();
-    const isCount = typeof initialTilesOrCount === 'number';
-    const initialCount = isCount ? initialTilesOrCount : (initialTilesOrCount?.size || 0);
-    const initialSet = isCount ? null : initialTilesOrCount;
+    let initialCount = 0;
+    let initialSet = null;
+
+    if (typeof initialTilesOrCount === 'number') {
+      initialCount = initialTilesOrCount;
+    } else if (initialTilesOrCount instanceof Set) {
+      initialSet = initialTilesOrCount;
+      initialCount = initialSet.size;
+    } else if (initialTilesOrCount && typeof initialTilesOrCount === 'object') {
+      initialCount = initialTilesOrCount.count || 0;
+      initialSet = initialTilesOrCount.readySet || null;
+    }
 
     while (Date.now() - startTime < timeoutMs) {
+      if (typeof abortCheck === 'function' && abortCheck()) {
+        throw new Error('用户已手动停止流水线');
+      }
+
       const tiles = getCanvasMediaTiles();
       const readyTiles = tiles.filter(t => t.isReady);
 

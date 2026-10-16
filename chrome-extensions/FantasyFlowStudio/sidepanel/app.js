@@ -997,6 +997,36 @@
       showToast('恭喜！全部分镜渲染流水线已顺利完成！', 'success');
     }
 
+    if (event === 'BATCH_PAUSED') {
+      appendLog('流水线已暂停', 'warn');
+    }
+
+    if (event === 'BATCH_RESUMED') {
+      appendLog('流水线继续运行', 'info');
+    }
+
+    if (event === 'BATCH_STOPPED') {
+      appendLog('流水线已由用户终止', 'warn');
+      if (el.btnAutoBuildAllCharacters) {
+        el.btnAutoBuildAllCharacters.disabled = false;
+        el.btnAutoBuildAllCharacters.innerHTML = '<span>⚡</span> 一键全自动建库：渲染定妆图 + 随机间隔更名';
+      }
+      if (el.btnSyncCharactersToLibrary) {
+        el.btnSyncCharactersToLibrary.disabled = false;
+        el.btnSyncCharactersToLibrary.innerHTML = '<span>📥</span> 仅导入已有定妆图至 Flow 角色库';
+      }
+      el.btnStartImageBatch.disabled = false;
+      el.btnPauseImageBatch.disabled = true;
+      el.btnStopImageBatch.disabled = true;
+      el.imageBatchBadge.textContent = '已停止';
+      el.btnStartVideoBatch.disabled = false;
+      el.btnPauseVideoBatch.disabled = true;
+      el.btnStopVideoBatch.disabled = true;
+      el.videoBatchBadge.textContent = '已停止';
+      el.btnStartRawBatch.disabled = false;
+      el.btnStopRawBatch.disabled = true;
+    }
+
     if (event === 'BATCH_ERROR') {
       appendLog(`流水线错误: ${message.error}`, 'error');
       showToast(`流水线中断: ${message.error}`, 'error');
@@ -1004,9 +1034,20 @@
         el.btnAutoBuildAllCharacters.disabled = false;
         el.btnAutoBuildAllCharacters.innerHTML = '<span>⚡</span> 一键全自动建库：渲染定妆图 + 随机间隔更名';
       }
+      if (el.btnSyncCharactersToLibrary) {
+        el.btnSyncCharactersToLibrary.disabled = false;
+        el.btnSyncCharactersToLibrary.innerHTML = '<span>📥</span> 仅导入已有定妆图至 Flow 角色库';
+      }
       el.btnStartImageBatch.disabled = false;
+      el.btnPauseImageBatch.disabled = true;
+      el.btnStopImageBatch.disabled = true;
+      el.imageBatchBadge.textContent = '异常中断';
       el.btnStartVideoBatch.disabled = false;
+      el.btnPauseVideoBatch.disabled = true;
+      el.btnStopVideoBatch.disabled = true;
+      el.videoBatchBadge.textContent = '异常中断';
       el.btnStartRawBatch.disabled = false;
+      el.btnStopRawBatch.disabled = true;
     }
   });
 

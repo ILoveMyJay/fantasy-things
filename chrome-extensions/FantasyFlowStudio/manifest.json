@@ -61,5 +61,16 @@
       "run_at": "document_end",
       "all_frames": false
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "core/bridge.js",
+        "icons/*"
+      ],
+      "matches": [
+        "*://flow.google.com/*"
+      ]
+    }
   ]
 }

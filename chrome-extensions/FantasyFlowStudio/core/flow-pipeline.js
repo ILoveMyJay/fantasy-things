@@ -39,6 +39,10 @@
    * 1. 批量生图流水线
    */
   async function runBatchImagePipeline(shots = [], options = {}) {
+    if (activePipeline) {
+      throw new Error(`当前已有流水线 [${activePipeline}] 正在运行中，请等待其完成或先点击停止。`);
+    }
+
     isPaused = false;
     isStopped = false;
     activePipeline = 'IMAGE';
@@ -65,39 +69,50 @@
           mode: 'IMAGE'
         });
 
-        // 统计当前画板磁贴数量
-        const initialTiles = window.FantasyAutomation.getCanvasMediaTiles().filter(t => t.isReady).length;
+        // 统计当前画板已就绪的媒体集合与数量
+        const readyTilesBefore = window.FantasyAutomation.getCanvasMediaTiles().filter(t => t.isReady);
+        const initialReadyState = {
+          count: readyTilesBefore.length,
+          readySet: new Set(readyTilesBefore.map(t => t.src))
+        };
 
-        // 若需要附加角色一致性参考图 (Dual-Anchor 视觉锚点)
+        // 1. 先清空上一分镜残留的提示词内容，防止累加污染
+        await window.FantasyAutomation.fillPrompt('', true);
+        await window.FantasyAutomation.sleep(200);
+
+        let hasAttachedReference = false;
+        // 2. 若需要附加角色一致性参考图 (Dual-Anchor 视觉锚点)
         if (shot.characterCode || shot.characterName) {
           notifySidepanel('ATTACHING_REFERENCE', { index: shotIndex, char: shot.characterName || shot.characterCode });
           try {
             await window.FantasyAutomation.openAssetPickerModal();
             await window.FantasyAutomation.selectAssetInModal(shot.characterName || shot.characterCode);
             await window.FantasyAutomation.sleep(400);
+            hasAttachedReference = true;
           } catch (e) {
             console.warn('[FantasyPipeline] 附加角色参考图失败，继续进行文本渲染:', e);
           }
         }
 
-        // 填充提示词 (包含 MCR 语义 DNA 锚点)
+        // 3. 填充提示词 (若已附加参考图卡片则追加在后，否则全新填入)
         notifySidepanel('FILLING_PROMPT', { index: shotIndex });
-        await window.FantasyAutomation.fillPrompt(shot.prompt, true);
+        await window.FantasyAutomation.fillPrompt(shot.prompt, !hasAttachedReference);
         await window.FantasyAutomation.sleep(600);
 
-        // 提交生成
+        // 4. 提交生成
         notifySidepanel('SUBMITTING', { index: shotIndex });
         await window.FantasyAutomation.clickSubmit();
         await window.FantasyAutomation.sleep(1500);
 
-        // 轮询等待新生成的图片磁贴就绪
+        // 5. 轮询等待新生成的图片磁贴就绪 (支持即时中断)
         notifySidepanel('WAITING_RENDER', { index: shotIndex });
         const newMedia = await window.FantasyAutomation.waitForNewGeneration(
-          initialTiles,
+          initialReadyState,
           150000,
           (progress) => {
             notifySidepanel('RENDER_PROGRESS', { index: shotIndex, ...progress });
-          }
+          },
+          () => isStopped
         );
 
         shot.generatedImageUrl = newMedia.src;
@@ -140,6 +155,10 @@
    * 2. 一键批量生视频流水线 (Veo 图生视频闭环)
    */
   async function runBatchVideoPipeline(shots = [], options = {}) {
+    if (activePipeline) {
+      throw new Error(`当前已有流水线 [${activePipeline}] 正在运行中，请等待其完成或先点击停止。`);
+    }
+
     isPaused = false;
     isStopped = false;
     activePipeline = 'VIDEO';
@@ -166,8 +185,17 @@
           mode: 'VIDEO'
         });
 
-        const initialTiles = window.FantasyAutomation.getCanvasMediaTiles().filter(t => t.isReady).length;
+        const readyTilesBefore = window.FantasyAutomation.getCanvasMediaTiles().filter(t => t.isReady);
+        const initialReadyState = {
+          count: readyTilesBefore.length,
+          readySet: new Set(readyTilesBefore.map(t => t.src))
+        };
 
+        // 1. 先清空上一分镜残留的提示词内容，防止累加污染
+        await window.FantasyAutomation.fillPrompt('', true);
+        await window.FantasyAutomation.sleep(200);
+
+        let hasAttachedFrame = false;
         // 若分镜已有图片产物，从项目中附加为首帧 (Start Frame)
         if (shot.generatedImageUrl || shot.imageIndex !== undefined) {
           notifySidepanel('ATTACHING_START_FRAME', { index: shotIndex });
@@ -176,15 +204,16 @@
             // 在素材弹窗中选取最新生成的对应分镜图
             await window.FantasyAutomation.selectAssetInModal(shot.imageIndex || 0);
             await window.FantasyAutomation.sleep(500);
+            hasAttachedFrame = true;
           } catch (e) {
             console.warn('[FantasyPipeline] 附加起始帧失败，回退纯文本视频生成:', e);
           }
         }
 
-        // 注入镜头运动提示词
+        // 注入镜头运动提示词 (若已附加起始帧则追加在后，否则全量填入)
         const videoPrompt = shot.videoPrompt || shot.prompt || 'Cinematic camera movement, slow motion, 4k';
         notifySidepanel('FILLING_PROMPT', { index: shotIndex, videoPrompt });
-        await window.FantasyAutomation.fillPrompt(videoPrompt, false);
+        await window.FantasyAutomation.fillPrompt(videoPrompt, !hasAttachedFrame);
         await window.FantasyAutomation.sleep(800);
 
         // 提交 Veo 视频生成
@@ -195,11 +224,12 @@
         // 轮询等待新视频渲染就绪
         notifySidepanel('WAITING_RENDER', { index: shotIndex, mode: 'VIDEO' });
         const newMedia = await window.FantasyAutomation.waitForNewGeneration(
-          initialTiles,
+          initialReadyState,
           300000, // 视频渲染最长等待 5 分钟
           (progress) => {
             notifySidepanel('RENDER_PROGRESS', { index: shotIndex, mode: 'VIDEO', ...progress });
-          }
+          },
+          () => isStopped
         );
 
         shot.generatedVideoUrl = newMedia.src;
@@ -240,12 +270,13 @@
   }
 
   /**
-   * 3. 全自动角色建库流水线 (自动生成 4 视角定妆图 + 随机延时 + 自动更名正名)
-   */
-  /**
    * 3. 全自动角色建库流水线 (阶段1：生成4面定妆图 -> 阶段2：导入Flow角色库并正名)
    */
   async function runAutoBuildCharactersPipeline(characters = [], options = {}) {
+    if (activePipeline) {
+      throw new Error(`当前已有流水线 [${activePipeline}] 正在运行中，请等待其完成或先点击停止。`);
+    }
+
     isPaused = false;
     isStopped = false;
     activePipeline = 'CHARACTER_BUILD';
@@ -268,7 +299,15 @@
           char
         });
 
-        const initialTiles = window.FantasyAutomation.getCanvasMediaTiles().filter(t => t.isReady).length;
+        const readyTilesBefore = window.FantasyAutomation.getCanvasMediaTiles().filter(t => t.isReady);
+        const initialReadyState = {
+          count: readyTilesBefore.length,
+          readySet: new Set(readyTilesBefore.map(t => t.src))
+        };
+
+        // 清空上一轮残留内容
+        await window.FantasyAutomation.fillPrompt('', true);
+        await window.FantasyAutomation.sleep(200);
 
         // 1. 注入 4 视角定妆图提示词
         notifySidepanel('FILLING_PROMPT', { index: charIndex, charName: char.name, mode: 'CHARACTER_BUILD' });
@@ -283,11 +322,12 @@
         // 3. 轮询等待定妆图渲染就绪
         notifySidepanel('WAITING_RENDER', { index: charIndex, charName: char.name, mode: 'CHARACTER_BUILD' });
         const newMedia = await window.FantasyAutomation.waitForNewGeneration(
-          initialTiles,
+          initialReadyState,
           150000,
           (progress) => {
             notifySidepanel('RENDER_PROGRESS', { index: charIndex, mode: 'CHARACTER_BUILD', ...progress });
-          }
+          },
+          () => isStopped
         );
 
         char.turnaroundImageUrl = newMedia.src;
@@ -307,7 +347,7 @@
       }
 
       // 阶段 2：全自动将定妆图导入为 Flow「角色」库实体并正名
-      await runSyncCharactersPipeline(characters, options);
+      await runSyncCharactersPipeline(characters, options, true);
 
       notifySidepanel('BATCH_ALL_COMPLETED', { mode: 'CHARACTER_BUILD', characters });
     } catch (err) {
@@ -321,47 +361,60 @@
   /**
    * 4. 纯角色库导入与正名流水线 (当画板已有定妆图时，直接导入为 Flow 角色实体)
    */
-  async function runSyncCharactersPipeline(characters = [], options = {}) {
+  async function runSyncCharactersPipeline(characters = [], options = {}, isSubPipeline = false) {
+    if (!isSubPipeline) {
+      if (activePipeline) {
+        throw new Error(`当前已有流水线 [${activePipeline}] 正在运行中，请等待其完成或先点击停止。`);
+      }
+      activePipeline = 'CHARACTER_SYNC';
+    }
+
     isPaused = false;
     isStopped = false;
 
     notifySidepanel('CHAR_SYNC_START', { total: characters.length });
 
-    for (let i = 0; i < characters.length; i++) {
-      await checkControlSignal();
-      const char = characters[i];
-      const charIndex = i + 1;
+    try {
+      for (let i = 0; i < characters.length; i++) {
+        await checkControlSignal();
+        const char = characters[i];
+        const charIndex = i + 1;
 
-      notifySidepanel('CHAR_BUILD_RENAMING', {
-        index: charIndex,
-        total: characters.length,
-        charName: char.name
-      });
-
-      try {
-        await window.FantasyAutomation.syncCharacterToFlowLibrary(char, { index: i });
-        notifySidepanel('CHAR_SYNC_COMPLETED', {
+        notifySidepanel('CHAR_BUILD_RENAMING', {
           index: charIndex,
           total: characters.length,
           charName: char.name
         });
-      } catch (err) {
-        console.warn(`[FantasyPipeline] 角色【${char.name}】导入 Flow 角色库提示:`, err?.message);
+
+        try {
+          await window.FantasyAutomation.syncCharacterToFlowLibrary(char, { index: i, total: characters.length });
+          notifySidepanel('CHAR_SYNC_COMPLETED', {
+            index: charIndex,
+            total: characters.length,
+            charName: char.name
+          });
+        } catch (err) {
+          console.warn(`[FantasyPipeline] 角色【${char.name}】导入 Flow 角色库提示:`, err?.message);
+        }
+
+        if (i < characters.length - 1) {
+          // 角色之间的随机间隔 (模拟真人，1.5~2.5秒)
+          const randomDelay = Math.floor(1500 + Math.random() * 1000);
+          notifySidepanel('CHAR_BUILD_DELAY', {
+            index: charIndex,
+            charName: char.name,
+            delaySeconds: (randomDelay / 1000).toFixed(1)
+          });
+          await window.FantasyAutomation.sleep(randomDelay);
+        }
       }
 
-      if (i < characters.length - 1) {
-        // 角色之间的随机间隔 (模拟真人，1.5~2.5秒)
-        const randomDelay = Math.floor(1500 + Math.random() * 1000);
-        notifySidepanel('CHAR_BUILD_DELAY', {
-          index: charIndex,
-          charName: char.name,
-          delaySeconds: (randomDelay / 1000).toFixed(1)
-        });
-        await window.FantasyAutomation.sleep(randomDelay);
+      notifySidepanel('CHAR_SYNC_ALL_COMPLETED', { total: characters.length });
+    } finally {
+      if (!isSubPipeline) {
+        activePipeline = null;
       }
     }
-
-    notifySidepanel('CHAR_SYNC_ALL_COMPLETED', { total: characters.length });
   }
 
   // 监听 Sidepanel 与 Background 控制指令
@@ -433,6 +486,8 @@
 
   window.FantasyPipeline = {
     runBatchImagePipeline,
-    runBatchVideoPipeline
+    runBatchVideoPipeline,
+    runAutoBuildCharactersPipeline,
+    runSyncCharactersPipeline
   };
 })();
