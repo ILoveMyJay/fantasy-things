@@ -172,10 +172,26 @@
   }
 
   /**
-   * 寻找生成提交按钮 (最高优先级的 arrow_forward 图标定位 + 容器遍历 + 属性匹配)
+   * 寻找生成提交按钮 (最高优先级的 开始生成 / arrow_forward / 生成 属性与容器匹配)
    */
   function findSubmitButton() {
-    // 1. 🥇 1 优先级：查找包含 'arrow_forward' 或 'send' 的图标元素，取其所属 button
+    // 1. 🥇 1 优先级：多语言 aria-label 包含匹配（开始生成 / 生成 / Submit / Generate）
+    try {
+      const btns = document.querySelectorAll('button, [role="button"]');
+      const SUBMIT_REGEX = /开始生成|生成|提交|Generate|Submit|생성|제출/i;
+      for (let i = 0; i < btns.length; i++) {
+        const btn = btns[i];
+        if (!isElementVisible(btn)) continue;
+        if (btn.getAttribute('aria-haspopup') === 'menu') continue; // 排除模型下拉框
+        const label = btn.getAttribute('aria-label') || '';
+        const text = (btn.textContent || '').trim();
+        if (SUBMIT_REGEX.test(label) || SUBMIT_REGEX.test(text)) {
+          return btn;
+        }
+      }
+    } catch (_) {}
+
+    // 2. 🥈 2 优先级：查找包含 'arrow_forward' 或 'send' 的图标元素，取其所属 button
     try {
       const icons = document.querySelectorAll('.google-symbols, i, span');
       for (let i = 0; i < icons.length; i++) {
@@ -188,7 +204,7 @@
       }
     } catch (_) {}
 
-    // 2. 🥈 2 优先级：在 Prompt Editor 所在的父容器/卡片内部定位提交按钮
+    // 3. 🥉 3 优先级：在 Prompt Editor 所在的父容器/卡片内部定位提交按钮
     try {
       const editor = findPromptEditor();
       if (editor) {
@@ -198,7 +214,7 @@
           for (let i = btns.length - 1; i >= 0; i--) {
             const btn = btns[i];
             if (!isElementVisible(btn)) continue;
-            if (btn.getAttribute('aria-haspopup') === 'menu') continue; // 排除模型切换下拉框
+            if (btn.getAttribute('aria-haspopup') === 'menu') continue;
             const label = btn.getAttribute('aria-label') || '';
             if (/close|clear|cancel|关闭/i.test(label)) continue;
 
@@ -217,28 +233,13 @@
       }
     } catch (_) {}
 
-    // 3. 🥉 3 优先级：多语言 aria-label 精准匹配 (排除 menu 下拉)
-    try {
-      const btns = document.querySelectorAll('button, [role="button"]');
-      const SUBMIT_REGEX = /^(生成|提交|Generate|Submit|생성|제출)$/i;
-      for (let i = 0; i < btns.length; i++) {
-        const btn = btns[i];
-        if (!isElementVisible(btn)) continue;
-        if (btn.getAttribute('aria-haspopup') === 'menu') continue;
-        const label = btn.getAttribute('aria-label') || '';
-        if (SUBMIT_REGEX.test(label) || SUBMIT_REGEX.test((btn.textContent || '').trim())) {
-          return btn;
-        }
-      }
-    } catch (_) {}
-
     return null;
   }
 
   /**
    * 等待提交按钮进入就绪可点击状态 (等待 React 状态渲染完成)
    */
-  async function waitForSubmitEnabled(timeout = 3000) {
+  async function waitForSubmitEnabled(timeout = 2000) {
     const start = Date.now();
     while (Date.now() - start < timeout) {
       const btn = findSubmitButton();
@@ -251,65 +252,70 @@
   }
 
   /**
-   * 触发生成提交按钮 (优先 CDP 硬件级真实鼠标事件 isTrusted=true，突破 Flow 提交防护)
+   * 触发生成提交 (按钮点击 + 输入框 Enter 键盘事件双重保证)
    */
   async function clickSubmit() {
-    // 1. 等待提交按钮变为可点击状态
-    const submitBtn = await waitForSubmitEnabled(3000);
-    if (!submitBtn) {
-      throw new Error('未找到 Flow 生成提交按钮，请确认当前已处于 flow.google.com 项目画板并且输入框可用');
-    }
-
-    // 2. 滚动并测量坐标
-    try {
-      submitBtn.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
-    } catch (_) {}
-    await sleep(80);
-
-    const rect = submitBtn.getBoundingClientRect();
-    const cx = Math.round(rect.left + rect.width / 2);
-    const cy = Math.round(rect.top + rect.height / 2);
-
-    // 3. 产生 UI hover / pointer 视觉反馈
-    const opts = { bubbles: true, cancelable: true, composed: true, clientX: cx, clientY: cy };
-    submitBtn.dispatchEvent(new PointerEvent('pointerover', opts));
-    submitBtn.dispatchEvent(new PointerEvent('pointerenter', opts));
-    submitBtn.dispatchEvent(new MouseEvent('mouseover', opts));
-
-    // 4. 发起 CDP 硬件级真实鼠标点击 (isTrusted=true)
+    // 1. 尝试寻找提交按钮并点击
+    const submitBtn = await waitForSubmitEnabled(2000);
     let cdpSuccess = false;
-    try {
-      const cdpRes = await new Promise((resolve) => {
-        chrome.runtime.sendMessage({
-          type: 'CDP_CLICK',
-          x: cx,
-          y: cy,
-          selector: '.google-symbols, span, i'
-        }, (res) => {
-          resolve(res || { ok: false, error: 'no response' });
+
+    if (submitBtn) {
+      try {
+        submitBtn.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+      } catch (_) {}
+      await sleep(80);
+
+      const rect = submitBtn.getBoundingClientRect();
+      const cx = Math.round(rect.left + rect.width / 2);
+      const cy = Math.round(rect.top + rect.height / 2);
+
+      const opts = { bubbles: true, cancelable: true, composed: true, clientX: cx, clientY: cy };
+      submitBtn.dispatchEvent(new PointerEvent('pointerover', opts));
+      submitBtn.dispatchEvent(new PointerEvent('pointerenter', opts));
+      submitBtn.dispatchEvent(new MouseEvent('mouseover', opts));
+
+      // 发起 CDP 硬件级点击
+      try {
+        const cdpRes = await new Promise((resolve) => {
+          chrome.runtime.sendMessage({
+            type: 'CDP_CLICK',
+            x: cx,
+            y: cy,
+            selector: '.google-symbols, span, i'
+          }, (res) => {
+            resolve(res || { ok: false, error: 'no response' });
+          });
         });
-      });
+        if (cdpRes && cdpRes.ok) {
+          cdpSuccess = true;
+          console.log('[FantasyAutomation] CDP 硬件级真实点击成功:', cdpRes);
+        }
+      } catch (_) {}
 
-      if (cdpRes && cdpRes.ok) {
-        cdpSuccess = true;
-        console.log('[FantasyAutomation] CDP 硬件级真实点击成功:', cdpRes);
-      } else {
-        console.warn('[FantasyAutomation] CDP 点击未成功，回退到原生点击方案:', cdpRes?.error);
-      }
-    } catch (e) {
-      console.warn('[FantasyAutomation] CDP 通信异常，回退原生:', e);
-    }
-
-    // 5. 若 CDP 未能成功，执行 DOM 级原生触发
-    if (!cdpSuccess) {
+      // 原生 DOM 事件兜底
       submitBtn.dispatchEvent(new PointerEvent('pointerdown', opts));
       submitBtn.dispatchEvent(new MouseEvent('mousedown', opts));
       submitBtn.dispatchEvent(new PointerEvent('pointerup', opts));
       submitBtn.dispatchEvent(new MouseEvent('mouseup', opts));
       submitBtn.click();
+      await sleep(200);
     }
 
-    await sleep(1000);
+    // 2. ★ 核心加固：无论按钮是否点击成功，均在输入框派发 Enter 键盘事件
+    const editor = findPromptEditor();
+    if (editor) {
+      editor.focus();
+      editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      editor.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      editor.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    // 3. 触发 CDP 硬件级 Enter
+    try {
+      chrome.runtime.sendMessage({ type: 'CDP_PRESS_ENTER' }).catch(() => {});
+    } catch (_) {}
+
     return true;
   }
 
@@ -559,6 +565,40 @@
   }
 
   /**
+   * 确保返回 Google Flow 主画板 /「所有媒体」页面 (/project/<id>)
+   */
+  async function navigateToProjectPage() {
+    const match = window.location.pathname.match(/\/project\/([a-zA-Z0-9_-]+)(.*)/);
+    const subRoute = match ? match[2] : '';
+    const isAlreadyOnCanvas = match && (!subRoute || subRoute === '/' || subRoute === '/canvas');
+
+    // 检查左侧导航栏中的「所有媒体」按钮
+    const allMediaNavBtn = [...document.querySelectorAll('a, button, div[role="button"], flow-nav-item, li, span')].find(el => {
+      const txt = (el.textContent || '').trim();
+      const sym = (el.querySelector('.google-symbols, i, span')?.textContent || '').trim();
+      return txt === '所有媒体' || txt === 'All media' || sym === 'grid_view';
+    });
+
+    if (allMediaNavBtn) {
+      const clickable = allMediaNavBtn.closest('a, button, [role="button"]') || allMediaNavBtn;
+      if (!isAlreadyOnCanvas || clickable.getAttribute('aria-selected') !== 'true') {
+        await clickElement(clickable);
+        await sleep(1000);
+        return true;
+      }
+    }
+
+    // 路由跳转兜底
+    if (!isAlreadyOnCanvas && match) {
+      window.location.href = `https://flow.google.com/project/${match[1]}`;
+      await sleep(1500);
+      return true;
+    }
+
+    return true;
+  }
+
+  /**
    * 从角色创建/编辑页面返回到角色列表页面
    * 注意：严禁在 /character 角色列表视图中触发，防止误点项目导航栏的「返回项目列表」按钮！
    */
@@ -793,11 +833,8 @@
    * 打开素材选择弹窗（点击 '+' 按钮或输入 '@'）
    */
   async function openAssetPickerModal() {
-    // 优先寻找 '+' 按钮
-    let addBtn = null;
-    try {
-      addBtn = document.querySelector('button.add-menu-trigger, button[aria-haspopup="dialog"]');
-    } catch (_) {}
+    // 优先寻找底部提示词栏的 '+' 素材添加按钮 (在提示框中添加素材)
+    let addBtn = document.querySelector('button[aria-label*="在提示框中添加素材"], button[aria-label*="添加素材"], button[aria-label*="素材"], button.add-menu-trigger, button[aria-haspopup="menu"], button[aria-haspopup="dialog"]');
 
     if (!addBtn) {
       const buttons = document.querySelectorAll('button');
@@ -809,7 +846,7 @@
           break;
         }
         const label = b.getAttribute('aria-label') || '';
-        if (/添加|Add|추가/i.test(label) && b.getAttribute('aria-haspopup')) {
+        if (/添加素材|在提示框中添加素材|Add\s*media/i.test(label)) {
           addBtn = b;
           break;
         }
@@ -818,16 +855,26 @@
 
     if (addBtn) {
       await clickElement(addBtn);
-      await sleep(200);
+      await sleep(300);
+
+      // 如果弹出了下拉菜单（例如包含“从项目中添加”或“角色”选项）
+      const menuItem = [...document.querySelectorAll('.mat-mdc-menu-item, [role="menuitem"]')].find(el => {
+        const txt = (el.textContent || '').trim();
+        return /从项目中添加|角色|素材|Project|Character/i.test(txt);
+      });
+      if (menuItem) {
+        await clickElement(menuItem);
+        await sleep(400);
+      }
     } else {
-      // 降级为在输入框输入 '@'
+      // 降级为在输入框输入 '@' 唤出提及选择浮层
       await fillPrompt('@', false);
-      await sleep(250);
+      await sleep(350);
     }
 
-    // 等待弹窗出现
+    // 等待弹窗或下拉列表出现
     return await waitFor(() => {
-      const dialog = document.querySelector('div[role="dialog"][data-state="open"], .cdk-overlay-pane [role="dialog"], [role="listbox"]');
+      const dialog = document.querySelector('div[role="dialog"][data-state="open"], .cdk-overlay-pane [role="dialog"], [role="listbox"], .mat-mdc-menu-panel, .cdk-overlay-pane');
       return dialog && isElementVisible(dialog) ? dialog : null;
     }, 4000);
   }
@@ -836,11 +883,11 @@
    * 在弹窗中选择资产（角色参考图或分镜图片）并附加到提示词
    */
   async function selectAssetInModal(queryOrIndex) {
-    const modal = document.querySelector('div[role="dialog"][data-state="open"], .cdk-overlay-pane, [role="listbox"]');
+    const modal = document.querySelector('div[role="dialog"][data-state="open"], .cdk-overlay-pane, [role="listbox"], .mat-mdc-menu-panel');
     if (!modal) return false;
 
-    await waitFor(() => modal.querySelectorAll('[role="option"], [data-item-index], .asset-item').length > 0, 3000);
-    const items = [...modal.querySelectorAll('[role="option"], [data-item-index], .asset-item')];
+    await waitFor(() => modal.querySelectorAll('[role="option"], [data-item-index], .asset-item, .mat-mdc-menu-item, flow-character-tile').length > 0, 3000);
+    const items = [...modal.querySelectorAll('[role="option"], [data-item-index], .asset-item, .mat-mdc-menu-item, flow-character-tile')];
     if (!items.length) return false;
 
     let targetItem = null;
@@ -848,22 +895,28 @@
       targetItem = items[queryOrIndex] || items[0];
     } else if (typeof queryOrIndex === 'string' && queryOrIndex.trim()) {
       const q = queryOrIndex.toLowerCase();
-      targetItem = items.find(it => (it.textContent || '').toLowerCase().includes(q) || (it.querySelector('img')?.alt || '').toLowerCase().includes(q));
+      // 匹配中英文名称、角色代码 (巴纳比 / Barnaby / MCR)
+      targetItem = items.find(it => {
+        const txt = (it.textContent || '').toLowerCase();
+        const alt = (it.querySelector('img')?.alt || '').toLowerCase();
+        return txt.includes(q) || alt.includes(q) || (q.includes('巴纳比') && txt.includes('巴纳比')) || (q.includes('barnaby') && (txt.includes('barnaby') || alt.includes('barnaby')));
+      });
     }
 
     if (!targetItem) targetItem = items[0];
 
-    const clickable = targetItem.querySelector('div') || targetItem;
+    const clickable = targetItem.querySelector('div, button') || targetItem;
     await clickElement(clickable);
-    await sleep(200);
+    await sleep(300);
 
     // 检查是否有关闭或"添加到提示/添加媒体"按钮
-    const confirmBtn = [...modal.querySelectorAll('button')].find(b =>
+    const confirmBtn = [...document.querySelectorAll('div[role="dialog"] button, button')].find(b =>
       /添加媒体|添加到提示|添加到画板|Add\s*media|Add\s*to\s*prompt/i.test(b.textContent || '')
     );
 
     if (confirmBtn && isElementVisible(confirmBtn)) {
       await clickElement(confirmBtn);
+      await sleep(300);
     }
 
     await stripMentionTrigger();
@@ -975,6 +1028,7 @@
     renameCharacterTile,
     renameCharacter,
     navigateToCharacterPage,
+    navigateToProjectPage,
     returnToCharacterList,
     syncCharacterToFlowLibrary,
     openAssetPickerModal,

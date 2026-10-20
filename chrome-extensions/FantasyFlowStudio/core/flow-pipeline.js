@@ -50,6 +50,10 @@
     notifySidepanel('BATCH_STARTED', { mode: 'IMAGE', total: shots.length });
 
     try {
+      // 0. 确保位于项目主画板 /「所有媒体」页面
+      await window.FantasyAutomation.navigateToProjectPage();
+      await window.FantasyAutomation.sleep(600);
+
       // 确保切换至图片模式
       await window.FantasyAutomation.switchFlowMode('IMAGE');
       await window.FantasyAutomation.sleep(500);
@@ -166,6 +170,10 @@
     notifySidepanel('BATCH_STARTED', { mode: 'VIDEO', total: shots.length });
 
     try {
+      // 0. 确保位于项目主画板 /「所有媒体」页面
+      await window.FantasyAutomation.navigateToProjectPage();
+      await window.FantasyAutomation.sleep(600);
+
       // 切换至视频生成模式
       await window.FantasyAutomation.switchFlowMode('VIDEO');
       await window.FantasyAutomation.sleep(600);
@@ -410,6 +418,10 @@
       }
 
       notifySidepanel('CHAR_SYNC_ALL_COMPLETED', { total: characters.length });
+      // 角色入库与正名全部完成后，自动切回主画板 /「所有媒体」页面
+      try {
+        await window.FantasyAutomation.navigateToProjectPage();
+      } catch (_) {}
     } finally {
       if (!isSubPipeline) {
         activePipeline = null;
