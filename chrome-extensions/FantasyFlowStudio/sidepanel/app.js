@@ -138,23 +138,111 @@
     el.logConsole.scrollTop = el.logConsole.scrollHeight;
   }
 
-  // 获取当前活动标签页
-  async function checkActiveTab() {
+  // 获取当前 Google Flow 目标标签页 (多级定位：当前窗口 -> 最近活动窗口 -> 全局 Flow 标签页)
+  async function getTargetFlowTab() {
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab && tab.url && tab.url.includes('flow.google.com')) {
-        state.activeTabId = tab.id;
-        el.connectionStatus.className = 'connection-status connected';
-        el.connectionStatus.querySelector('.status-text').textContent = '已连接 Google Flow';
-        return true;
-      } else {
+      // 1. 当前窗口活动标签
+      let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab && tab.url && tab.url.includes('flow.google.com')) return tab;
+
+      // 2. 最近激活窗口的活动标签
+      [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (tab && tab.url && tab.url.includes('flow.google.com')) return tab;
+
+      // 3. 全局查找已打开的 flow.google.com 标签页
+      const allFlowTabs = await chrome.tabs.query({ url: '*://flow.google.com/*' });
+      if (allFlowTabs && allFlowTabs.length > 0) {
+        const projectTab = allFlowTabs.find(t => t.url.includes('/project/') || t.url.includes('/canvas/')) || allFlowTabs[0];
+        return projectTab;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // 检测与 Google Flow 页面的连接状态，并支持自动自愈注入脚本
+  async function checkActiveTab(autoHeal = true) {
+    try {
+      const tab = await getTargetFlowTab();
+      if (!tab) {
         state.activeTabId = null;
         el.connectionStatus.className = 'connection-status';
         el.connectionStatus.querySelector('.status-text').textContent = '未处于 Flow 画板页面';
         return false;
       }
+
+      state.activeTabId = tab.id;
+
+      // 探测与 Tab 内 Content Script 的连通性
+      const pingTab = () => new Promise(resolve => {
+        chrome.tabs.sendMessage(tab.id, { type: 'PING' }, res => {
+          if (chrome.runtime.lastError || !res?.ok) {
+            resolve(false);
+          } else {
+            resolve(true);
+          }
+        });
+      });
+
+      let isAlive = await pingTab();
+
+      // 如果未响应且允许自愈，向 Service Worker 请求补全 Content Scripts 注入
+      if (!isAlive && autoHeal) {
+        el.connectionStatus.className = 'connection-status warning';
+        el.connectionStatus.querySelector('.status-text').textContent = '正在连接 Flow 画板...';
+
+        const healRes = await new Promise(resolve => {
+          chrome.runtime.sendMessage({ type: 'ENSURE_CONTENT_SCRIPTS', tabId: tab.id }, resolve);
+        });
+
+        if (healRes?.ok) {
+          await new Promise(r => setTimeout(r, 300));
+          isAlive = await pingTab();
+        }
+      }
+
+      if (isAlive) {
+        el.connectionStatus.className = 'connection-status connected';
+        el.connectionStatus.querySelector('.status-text').textContent = '已连接 Google Flow';
+        return true;
+      } else {
+        el.connectionStatus.className = 'connection-status error';
+        el.connectionStatus.querySelector('.status-text').textContent = 'Flow 待刷新 (点击重试)';
+        return false;
+      }
     } catch (_) {
       return false;
+    }
+  }
+
+  // 统一带自动自愈能力的消息发送函数
+  async function sendTabMessage(message) {
+    const connected = await checkActiveTab(true);
+    if (!connected || !state.activeTabId) {
+      throw new Error('未连接到 Google Flow 画板。请先在浏览器打开 flow.google.com 项目页面并按 F5 刷新！');
+    }
+
+    const doSend = () => new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(state.activeTabId, message, res => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(res);
+        }
+      });
+    });
+
+    try {
+      return await doSend();
+    } catch (err) {
+      console.warn('[FantasyApp] 消息通信中断，正在尝试自愈重连:', err.message);
+      const healRes = await new Promise(resolve => {
+        chrome.runtime.sendMessage({ type: 'ENSURE_CONTENT_SCRIPTS', tabId: state.activeTabId }, resolve);
+      });
+      if (healRes?.ok) {
+        await new Promise(r => setTimeout(r, 400));
+        return await doSend();
+      }
+      throw new Error('无法与画板建立通信：请在浏览器中手动刷新当前 Google Flow 页面 (F5)，再重新点击！');
     }
   }
 
@@ -268,26 +356,28 @@
         const idx = parseInt(e.currentTarget.dataset.index, 10);
         const char = state.characters[idx];
         if (!char) return;
-        const connected = await checkActiveTab();
-        if (!connected) { showToast('请在 Flow 画板页面中操作', 'error'); return; }
 
         const originalText = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = `<span>⏳</span> 正在提交【${char.name}】定妆图...`;
 
-        chrome.tabs.sendMessage(state.activeTabId, {
-          type: 'START_IMAGE_BATCH',
-          shots: [{ prompt: char.turnaroundPrompt }],
-          options: { autoDownload: false }
-        }, (res) => {
-          btn.disabled = false;
-          btn.innerHTML = originalText;
+        try {
+          const res = await sendTabMessage({
+            type: 'START_IMAGE_BATCH',
+            shots: [{ prompt: char.turnaroundPrompt }],
+            options: { autoDownload: false }
+          });
           if (res?.ok) {
             showToast(`已成功向 Flow 提交【${char.name}】四面定妆图渲染！`, 'success');
           } else {
-            showToast(`提交失败: ${res?.error || '无法与画板建立通信'}`, 'error');
+            throw new Error(res?.error || '无法与画板建立通信');
           }
-        });
+        } catch (err) {
+          showToast(`提交失败: ${err.message}`, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = originalText;
+        }
       });
     });
 
@@ -296,26 +386,28 @@
         const name = e.currentTarget.dataset.name;
         const idx = parseInt(e.currentTarget.dataset.index, 10);
         const char = state.characters[idx] || { name };
-        const connected = await checkActiveTab();
-        if (!connected) { showToast('请在 Flow 页面中操作', 'error'); return; }
 
         const origText = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = `<span>⏳</span> 正在将【${name}】导入角色库...`;
 
-        chrome.tabs.sendMessage(state.activeTabId, {
-          type: 'START_CHARACTERS_SYNC',
-          characters: [char],
-          options: { index: idx }
-        }, (res) => {
-          btn.disabled = false;
-          btn.innerHTML = origText;
+        try {
+          const res = await sendTabMessage({
+            type: 'START_CHARACTERS_SYNC',
+            characters: [char],
+            options: { index: idx }
+          });
           if (res?.ok) {
             showToast(`成功将【${name}】导入 Flow 角色库并正名！`, 'success');
           } else {
             showToast(`导入响应: ${res?.error || '请确认当前处于 Flow 项目页面'}`, 'warn');
           }
-        });
+        } catch (err) {
+          showToast(`导入失败: ${err.message}`, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = origText;
+        }
       });
     });
   }
@@ -456,27 +548,25 @@
           showToast('请先解析出故事角色设定', 'warn');
           return;
         }
-        const connected = await checkActiveTab();
-        if (!connected) {
-          showToast('请在 Flow 画板页面中操作', 'error');
-          return;
-        }
 
         el.btnAutoBuildAllCharacters.disabled = true;
         el.btnAutoBuildAllCharacters.innerHTML = '<span>⏳</span> 正在全自动建库中 (出图 + 随机延时正名)...';
         appendLog(`🚀 启动全自动角色建库流水线，共 ${state.characters.length} 个角色...`, 'info');
 
-        chrome.tabs.sendMessage(state.activeTabId, {
-          type: 'START_CHARACTERS_BUILD',
-          characters: state.characters,
-          options: { autoDownload: false }
-        }, (res) => {
+        try {
+          const res = await sendTabMessage({
+            type: 'START_CHARACTERS_BUILD',
+            characters: state.characters,
+            options: { autoDownload: false }
+          });
           if (!res?.ok) {
-            el.btnAutoBuildAllCharacters.disabled = false;
-            el.btnAutoBuildAllCharacters.innerHTML = '<span>⚡</span> 一键全自动建库：渲染定妆图 + 导入角色库正名';
-            showToast(`启动失败: ${res?.error || '无法与画板建立通信'}`, 'error');
+            throw new Error(res?.error || '无法与画板建立通信');
           }
-        });
+        } catch (err) {
+          el.btnAutoBuildAllCharacters.disabled = false;
+          el.btnAutoBuildAllCharacters.innerHTML = '<span>⚡</span> 一键全自动建库：渲染定妆图 + 导入角色库正名';
+          showToast(`启动失败: ${err.message}`, 'error');
+        }
       });
     }
 
@@ -487,30 +577,28 @@
           showToast('请先解析出故事角色设定', 'warn');
           return;
         }
-        const connected = await checkActiveTab();
-        if (!connected) {
-          showToast('请在 Flow 页面中操作', 'error');
-          return;
-        }
 
         const origHtml = el.btnSyncCharactersToLibrary.innerHTML;
         el.btnSyncCharactersToLibrary.disabled = true;
         el.btnSyncCharactersToLibrary.innerHTML = '<span>⏳</span> 正在将画板角色导入 Flow 角色库并正名...';
         appendLog(`🚀 启动画板已有定妆图入库与正名流程，共 ${state.characters.length} 个角色...`, 'info');
 
-        chrome.tabs.sendMessage(state.activeTabId, {
-          type: 'START_CHARACTERS_SYNC',
-          characters: state.characters,
-          options: { autoDownload: false }
-        }, (res) => {
-          el.btnSyncCharactersToLibrary.disabled = false;
-          el.btnSyncCharactersToLibrary.innerHTML = origHtml;
+        try {
+          const res = await sendTabMessage({
+            type: 'START_CHARACTERS_SYNC',
+            characters: state.characters,
+            options: { autoDownload: false }
+          });
           if (res?.ok) {
             showToast('已向 Flow 启动角色库导入与正名！', 'info');
           } else {
-            showToast(`启动失败: ${res?.error || '无法与 Flow 建立通信'}`, 'error');
+            throw new Error(res?.error || '无法与 Flow 建立通信');
           }
-        });
+        } catch (err) {
+          el.btnSyncCharactersToLibrary.disabled = false;
+          el.btnSyncCharactersToLibrary.innerHTML = origHtml;
+          showToast(`启动失败: ${err.message}`, 'error');
+        }
       });
     }
 
@@ -551,48 +639,53 @@
     // Step 3: 批量生图流水线控制
     el.btnStartImageBatch.addEventListener('click', async () => {
       if (!state.shots.length) { showToast('没有可渲染的分镜清单', 'warn'); return; }
-      const connected = await checkActiveTab();
-      if (!connected) { showToast('请确保当前标签页处于 flow.google.com 项目中', 'error'); return; }
 
       el.btnStartImageBatch.disabled = true;
       el.btnPauseImageBatch.disabled = false;
       el.btnStopImageBatch.disabled = false;
       el.imageBatchBadge.textContent = '运行中';
 
-      chrome.tabs.sendMessage(state.activeTabId, {
-        type: 'START_IMAGE_BATCH',
-        shots: state.shots,
-        options: {
-          projectTitle: state.settings.projectTitle,
-          delayBetweenShots: state.settings.delayBetweenShots || 3500,
-          autoDownload: state.settings.autoDownload
-        }
-      }, (res) => {
+      try {
+        const res = await sendTabMessage({
+          type: 'START_IMAGE_BATCH',
+          shots: state.shots,
+          options: {
+            projectTitle: state.settings.projectTitle,
+            delayBetweenShots: state.settings.delayBetweenShots || 3500,
+            autoDownload: state.settings.autoDownload
+          }
+        });
         if (!res?.ok) {
-          showToast(`启动失败: ${res?.error || '无法与画板建立通信'}`, 'error');
-          el.btnStartImageBatch.disabled = false;
-          el.btnPauseImageBatch.disabled = true;
-          el.btnStopImageBatch.disabled = true;
-          el.imageBatchBadge.textContent = '异常';
+          throw new Error(res?.error || '无法与画板建立通信');
         }
-      });
-    });
-
-    el.btnPauseImageBatch.addEventListener('click', () => {
-      if (!state.activeTabId) return;
-      const isPaused = el.btnPauseImageBatch.textContent.includes('继续');
-      if (isPaused) {
-        chrome.tabs.sendMessage(state.activeTabId, { type: 'RESUME_BATCH' });
-        el.btnPauseImageBatch.innerHTML = '<span>⏸</span> 暂停';
-      } else {
-        chrome.tabs.sendMessage(state.activeTabId, { type: 'PAUSE_BATCH' });
-        el.btnPauseImageBatch.innerHTML = '<span>▶</span> 继续';
+      } catch (err) {
+        showToast(`启动失败: ${err.message}`, 'error');
+        el.btnStartImageBatch.disabled = false;
+        el.btnPauseImageBatch.disabled = true;
+        el.btnStopImageBatch.disabled = true;
+        el.imageBatchBadge.textContent = '异常';
       }
     });
 
-    el.btnStopImageBatch.addEventListener('click', () => {
-      if (!state.activeTabId) return;
-      chrome.tabs.sendMessage(state.activeTabId, { type: 'STOP_BATCH' });
+    el.btnPauseImageBatch.addEventListener('click', async () => {
+      const isPaused = el.btnPauseImageBatch.textContent.includes('继续');
+      try {
+        if (isPaused) {
+          await sendTabMessage({ type: 'RESUME_BATCH' });
+          el.btnPauseImageBatch.innerHTML = '<span>⏸</span> 暂停';
+        } else {
+          await sendTabMessage({ type: 'PAUSE_BATCH' });
+          el.btnPauseImageBatch.innerHTML = '<span>▶</span> 继续';
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    el.btnStopImageBatch.addEventListener('click', async () => {
+      try {
+        await sendTabMessage({ type: 'STOP_BATCH' });
+      } catch (_) {}
       el.btnStartImageBatch.disabled = false;
       el.btnPauseImageBatch.disabled = true;
       el.btnStopImageBatch.disabled = true;
@@ -606,48 +699,53 @@
     // Step 4: 一键图生视频流水线控制
     el.btnStartVideoBatch.addEventListener('click', async () => {
       if (!state.shots.length) { showToast('分镜清单为空', 'warn'); return; }
-      const connected = await checkActiveTab();
-      if (!connected) { showToast('请确保处于 flow.google.com 项目中', 'error'); return; }
 
       el.btnStartVideoBatch.disabled = true;
       el.btnPauseVideoBatch.disabled = false;
       el.btnStopVideoBatch.disabled = false;
       el.videoBatchBadge.textContent = '运行中';
 
-      chrome.tabs.sendMessage(state.activeTabId, {
-        type: 'START_VIDEO_BATCH',
-        shots: state.shots,
-        options: {
-          projectTitle: state.settings.projectTitle,
-          delayBetweenShots: 4000,
-          autoDownload: state.settings.autoDownload
-        }
-      }, (res) => {
+      try {
+        const res = await sendTabMessage({
+          type: 'START_VIDEO_BATCH',
+          shots: state.shots,
+          options: {
+            projectTitle: state.settings.projectTitle,
+            delayBetweenShots: 4000,
+            autoDownload: state.settings.autoDownload
+          }
+        });
         if (!res?.ok) {
-          showToast(`启动失败: ${res?.error || '无法与画板建立通信'}`, 'error');
-          el.btnStartVideoBatch.disabled = false;
-          el.btnPauseVideoBatch.disabled = true;
-          el.btnStopVideoBatch.disabled = true;
-          el.videoBatchBadge.textContent = '异常';
+          throw new Error(res?.error || '无法与画板建立通信');
         }
-      });
-    });
-
-    el.btnPauseVideoBatch.addEventListener('click', () => {
-      if (!state.activeTabId) return;
-      const isPaused = el.btnPauseVideoBatch.textContent.includes('继续');
-      if (isPaused) {
-        chrome.tabs.sendMessage(state.activeTabId, { type: 'RESUME_BATCH' });
-        el.btnPauseVideoBatch.innerHTML = '<span>⏸</span> 暂停';
-      } else {
-        chrome.tabs.sendMessage(state.activeTabId, { type: 'PAUSE_BATCH' });
-        el.btnPauseVideoBatch.innerHTML = '<span>▶</span> 继续';
+      } catch (err) {
+        showToast(`启动失败: ${err.message}`, 'error');
+        el.btnStartVideoBatch.disabled = false;
+        el.btnPauseVideoBatch.disabled = true;
+        el.btnStopVideoBatch.disabled = true;
+        el.videoBatchBadge.textContent = '异常';
       }
     });
 
-    el.btnStopVideoBatch.addEventListener('click', () => {
-      if (!state.activeTabId) return;
-      chrome.tabs.sendMessage(state.activeTabId, { type: 'STOP_BATCH' });
+    el.btnPauseVideoBatch.addEventListener('click', async () => {
+      const isPaused = el.btnPauseVideoBatch.textContent.includes('继续');
+      try {
+        if (isPaused) {
+          await sendTabMessage({ type: 'RESUME_BATCH' });
+          el.btnPauseVideoBatch.innerHTML = '<span>⏸</span> 暂停';
+        } else {
+          await sendTabMessage({ type: 'PAUSE_BATCH' });
+          el.btnPauseVideoBatch.innerHTML = '<span>▶</span> 继续';
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    el.btnStopVideoBatch.addEventListener('click', async () => {
+      try {
+        await sendTabMessage({ type: 'STOP_BATCH' });
+      } catch (_) {}
       el.btnStartVideoBatch.disabled = false;
       el.btnPauseVideoBatch.disabled = true;
       el.btnStopVideoBatch.disabled = true;
@@ -660,8 +758,6 @@
     el.btnStartRawBatch.addEventListener('click', async () => {
       const rawText = el.rawPromptsInput.value.trim();
       if (!rawText) { showToast('请输入提示词', 'warn'); return; }
-      const connected = await checkActiveTab();
-      if (!connected) { showToast('请连接 Flow 画板页面', 'error'); return; }
 
       const prompts = rawText.split('\n').map(p => p.trim()).filter(Boolean);
       const shots = prompts.map((prompt, idx) => ({ shotIndex: idx + 1, prompt }));
@@ -670,26 +766,30 @@
       el.btnStopRawBatch.disabled = false;
       appendLog(`开始批量提交 ${shots.length} 条提示词...`, 'info');
 
-      chrome.tabs.sendMessage(state.activeTabId, {
-        type: 'START_IMAGE_BATCH',
-        shots,
-        options: {
-          projectTitle: 'RawPromptStudio',
-          delayBetweenShots: parseInt(el.promptDelayInput.value, 10) || 3500,
-          autoDownload: el.promptAutoDownload.checked
-        }
-      }, (res) => {
+      try {
+        const res = await sendTabMessage({
+          type: 'START_IMAGE_BATCH',
+          shots,
+          options: {
+            projectTitle: 'RawPromptStudio',
+            delayBetweenShots: parseInt(el.promptDelayInput.value, 10) || 3500,
+            autoDownload: el.promptAutoDownload.checked
+          }
+        });
         if (!res?.ok) {
-          appendLog(`批量任务异常: ${res?.error}`, 'error');
-          el.btnStartRawBatch.disabled = false;
-          el.btnStopRawBatch.disabled = true;
+          throw new Error(res?.error || '无法与画板建立通信');
         }
-      });
+      } catch (err) {
+        appendLog(`批量任务异常: ${err.message}`, 'error');
+        el.btnStartRawBatch.disabled = false;
+        el.btnStopRawBatch.disabled = true;
+      }
     });
 
-    el.btnStopRawBatch.addEventListener('click', () => {
-      if (!state.activeTabId) return;
-      chrome.tabs.sendMessage(state.activeTabId, { type: 'STOP_BATCH' });
+    el.btnStopRawBatch.addEventListener('click', async () => {
+      try {
+        await sendTabMessage({ type: 'STOP_BATCH' });
+      } catch (_) {}
       el.btnStartRawBatch.disabled = false;
       el.btnStopRawBatch.disabled = true;
       appendLog('用户已停止批量生图任务', 'warn');
@@ -829,6 +929,21 @@
         showToast('项目数据已重置', 'info');
       }
     });
+
+    // 点击连接状态指示灯触发重新检测与自愈
+    if (el.connectionStatus) {
+      el.connectionStatus.addEventListener('click', async () => {
+        showToast('正在重新检测与 Google Flow 画板的连接...', 'info');
+        const ok = await checkActiveTab(true);
+        if (ok) {
+          showToast('✅ 已成功连接 Google Flow 画板！', 'success');
+        } else if (state.activeTabId) {
+          showToast('⚠️ 建议在 Google Flow 页面按 F5 刷新以恢复连接', 'warn');
+        } else {
+          showToast('❌ 未在浏览器中找到已打开的 flow.google.com 页面', 'error');
+        }
+      });
+    }
   }
 
   // 监听来自 Flow 页面流水线的事件更新

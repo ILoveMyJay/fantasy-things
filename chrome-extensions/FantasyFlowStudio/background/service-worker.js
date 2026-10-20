@@ -156,25 +156,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         tabId = activeTab?.id;
       }
       if (!tabId) {
-        sendResponse({ ok: false, error: 'no tab id' });
+        sendResponse({ ok: false, error: '未找到目标标签页' });
         return;
       }
       try {
-        const [check] = await chrome.scripting.executeScript({
-          target: { tabId },
-          func: () => !!window.__fantasyPipelineLoaded
-        }).catch(() => [{}]);
+        // 先发送 PING 检测是否已经处于存活通信状态
+        const isAlive = await new Promise((resolve) => {
+          chrome.tabs.sendMessage(tabId, { type: 'PING' }, (res) => {
+            if (chrome.runtime.lastError || !res?.ok) {
+              resolve(false);
+            } else {
+              resolve(true);
+            }
+          });
+        });
 
-        if (check?.result) {
+        if (isAlive) {
           sendResponse({ ok: true, alreadyLoaded: true });
           return;
         }
 
+        // 注入 MAIN Bridge
         await chrome.scripting.executeScript({
           target: { tabId },
           world: 'MAIN',
           files: ['core/bridge.js']
-        });
+        }).catch(() => {});
+
+        // 注入 ISOLATED 核心自动化流水线
         await chrome.scripting.executeScript({
           target: { tabId },
           files: [
@@ -183,8 +192,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             'core/flow-pipeline.js'
           ]
         });
-        sendResponse({ ok: true });
+
+        // 稍作等待以确保消息监听器挂载
+        await new Promise(r => setTimeout(r, 200));
+
+        // 二次验证通信状态
+        const verified = await new Promise((resolve) => {
+          chrome.tabs.sendMessage(tabId, { type: 'PING' }, (res) => {
+            if (chrome.runtime.lastError || !res?.ok) {
+              resolve(false);
+            } else {
+              resolve(true);
+            }
+          });
+        });
+
+        sendResponse({ ok: true, injected: true, verified });
       } catch (err) {
+        console.warn('[FantasyFlowSW] 动态注入 Content Scripts 失败:', err);
         sendResponse({ ok: false, error: err?.message });
       }
     })();

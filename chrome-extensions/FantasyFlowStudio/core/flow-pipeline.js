@@ -419,6 +419,11 @@
 
   // 监听 Sidepanel 与 Background 控制指令
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'PING') {
+      sendResponse({ ok: true, alive: true, version: '1.0.0' });
+      return true;
+    }
+
     if (message.type === 'START_CHARACTERS_BUILD') {
       runAutoBuildCharactersPipeline(message.characters, message.options)
         .then(() => sendResponse({ ok: true }))

@@ -113,6 +113,14 @@ body {
   padding: 4px 8px;
   border-radius: var(--radius-full);
   border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.connection-status:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .status-dot {
@@ -129,6 +137,24 @@ body {
 
 .connection-status.connected .status-text {
   color: var(--accent-emerald);
+}
+
+.connection-status.warning .status-dot {
+  background-color: var(--accent-amber);
+  box-shadow: 0 0 8px var(--accent-amber);
+}
+
+.connection-status.warning .status-text {
+  color: var(--accent-amber);
+}
+
+.connection-status.error .status-dot {
+  background-color: var(--accent-rose);
+  box-shadow: 0 0 8px var(--accent-rose);
+}
+
+.connection-status.error .status-text {
+  color: var(--accent-rose);
 }
 
 /* Nav Tabs */
