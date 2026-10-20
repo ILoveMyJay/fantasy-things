@@ -570,22 +570,27 @@
   async function navigateToProjectPage() {
     const match = window.location.pathname.match(/\/project\/([a-zA-Z0-9_-]+)(.*)/);
     const subRoute = match ? match[2] : '';
-    const isAlreadyOnCanvas = match && (!subRoute || subRoute === '/' || subRoute === '/canvas');
+    const isCharacterRoute = subRoute.includes('/character');
+    const hasCanvasGrid = document.querySelectorAll('[data-tile-id], flow-grid-tile-container').length > 0;
 
-    // 检查左侧导航栏中的「所有媒体」按钮
-    const allMediaNavBtn = [...document.querySelectorAll('a, button, div[role="button"], flow-nav-item, li, span')].find(el => {
+    // 若已经处于主画布并且不在角色子路由下，无需重复点击导航
+    if (!isCharacterRoute && (hasCanvasGrid || !subRoute || subRoute === '/' || subRoute === '/canvas')) {
+      return true;
+    }
+
+    // 仅在侧边栏导航容器内部查找「所有媒体」按钮，防止触碰顶部项目名称菜单
+    const sidebar = document.querySelector('flow-side-nav, nav, aside, [role="navigation"], .side-nav') || document.body;
+    const allMediaNavBtn = [...sidebar.querySelectorAll('a, button, div[role="button"], flow-nav-item, li')].find(el => {
       const txt = (el.textContent || '').trim();
       const sym = (el.querySelector('.google-symbols, i, span')?.textContent || '').trim();
-      return txt === '所有媒体' || txt === 'All media' || sym === 'grid_view';
+      return (txt.includes('所有媒体') || txt.includes('All media') || sym === 'grid_view') && !txt.includes('删除') && !txt.includes('回收站');
     });
 
     if (allMediaNavBtn) {
-      const clickable = allMediaNavBtn.closest('a, button, [role="button"]') || allMediaNavBtn;
-      if (!isAlreadyOnCanvas || clickable.getAttribute('aria-selected') !== 'true') {
-        await clickElement(clickable);
-        await sleep(1000);
-        return true;
-      }
+      const clickable = allMediaNavBtn.closest('a, button, [role="button"], flow-nav-item') || allMediaNavBtn;
+      await clickElement(clickable);
+      await sleep(1000);
+      return true;
     }
 
     // 路由跳转兜底
@@ -833,32 +838,47 @@
    * 打开素材选择弹窗（点击 '+' 按钮或输入 '@'）
    */
   async function openAssetPickerModal() {
-    // 优先寻找底部提示词栏的 '+' 素材添加按钮 (在提示框中添加素材)
-    let addBtn = document.querySelector('button[aria-label*="在提示框中添加素材"], button[aria-label*="添加素材"], button[aria-label*="素材"], button.add-menu-trigger, button[aria-haspopup="menu"], button[aria-haspopup="dialog"]');
+    // 0. 先关闭任何残留的无关下拉菜单 (如误触开启的项目重命名/删除菜单)
+    try {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+      await sleep(100);
+    } catch (_) {}
+
+    // 1. 定位底部输入框容器，严格限定范围在输入框内，防止误触顶部导航项目菜单！
+    const editor = findPromptEditor();
+    const promptContainer = editor?.closest('.prompt-input-container, flow-prompt-input, flow-character-prompt-input, footer, [class*="prompt"]') ||
+                            editor?.parentElement?.parentElement ||
+                            document.querySelector('footer, [class*="footer"], [class*="prompt"]');
+
+    let addBtn = null;
+    if (promptContainer) {
+      const buttons = [...promptContainer.querySelectorAll('button')].filter(isElementVisible);
+      addBtn = buttons.find(b => {
+        const label = b.getAttribute('aria-label') || '';
+        const txt = (b.textContent || '').trim();
+        const sym = (b.querySelector('.google-symbols, i, span')?.textContent || '').trim();
+        return /添加素材|在提示框中添加素材|Add\s*media|素材/i.test(label) ||
+               /添加素材|在提示框中添加素材|Add\s*media/i.test(txt) ||
+               sym === 'add_2' || sym === 'add';
+      });
+    }
 
     if (!addBtn) {
-      const buttons = document.querySelectorAll('button');
-      for (let i = 0; i < buttons.length; i++) {
-        const b = buttons[i];
-        const sym = b.querySelector('.google-symbols, i, span')?.textContent?.trim();
-        if (sym === 'add_2' || sym === 'add') {
-          addBtn = b;
-          break;
-        }
-        const label = b.getAttribute('aria-label') || '';
-        if (/添加素材|在提示框中添加素材|Add\s*media/i.test(label)) {
-          addBtn = b;
-          break;
-        }
-      }
+      // 容错：在底部区域寻找带加号的按钮
+      const bottomButtons = [...document.querySelectorAll('footer button, [class*="footer"] button, [class*="prompt"] button')].filter(isElementVisible);
+      addBtn = bottomButtons.find(b => {
+        const sym = (b.querySelector('.google-symbols, i, span')?.textContent || '').trim();
+        return sym === 'add_2' || sym === 'add';
+      });
     }
 
     if (addBtn) {
       await clickElement(addBtn);
-      await sleep(300);
+      await sleep(350);
 
-      // 如果弹出了下拉菜单（例如包含“从项目中添加”或“角色”选项）
+      // 如果弹出了下拉菜单（例如“从项目中添加”或“角色”）
       const menuItem = [...document.querySelectorAll('.mat-mdc-menu-item, [role="menuitem"]')].find(el => {
+        if (!isElementVisible(el)) return false;
         const txt = (el.textContent || '').trim();
         return /从项目中添加|角色|素材|Project|Character/i.test(txt);
       });
@@ -925,21 +945,112 @@
   }
 
   /**
+   * 查找底部提示词栏右侧的模型设置胶囊按钮 (如 "Nano Banana 2.1 🎦 x1" 或 "Veo 3.1 Lite")
+   */
+  function findModelSettingsBtn() {
+    const submitBtn = findSubmitButton();
+    if (submitBtn) {
+      const container = submitBtn.closest('.input-actions, .prompt-bar-actions, [class*="action"], [class*="footer"]') || submitBtn.parentElement;
+      if (container) {
+        const btns = [...container.querySelectorAll('button')].filter(b => isElementVisible(b) && b !== submitBtn);
+        const match = btns.find(b => /Nano|Banana|Veo|Imagen|x1|x2|x4|视频|Video|图片|Image/i.test(b.textContent || ''));
+        if (match) return match;
+      }
+    }
+
+    const allBtns = [...document.querySelectorAll('button, [role="button"]')].filter(isElementVisible);
+    return allBtns.find(b => {
+      const aria = b.getAttribute('aria-label') || '';
+      if (aria.includes('开始生成') || aria.includes('生成')) return false;
+      const txt = (b.textContent || '').trim();
+      return /Nano\s*Banana|Banana|Veo|Imagen|🎦/i.test(txt) || (/\bx[1-4]\b/i.test(txt) && /Nano|Banana|Veo/i.test(txt));
+    }) || null;
+  }
+
+  /**
    * 切换 Flow 生成模式 ('IMAGE' | 'VIDEO')
+   * Google Flow 的模式切换位于底部 Prompt 输入框右侧的「模型/设置胶囊按钮」（例如 "Nano Banana 2.1 🎦 x1" 或 "Veo 3.1 Lite"）
+   * 点击该按钮后，在弹出的设置浮层中切换「图片」或「视频」Tab
    */
   async function switchFlowMode(mode) {
     const isVideo = mode === 'VIDEO';
+
+    // 1. 先检查是否已经处于目标模式
+    const modelBtn = findModelSettingsBtn();
+    if (modelBtn) {
+      const curText = (modelBtn.textContent || '').trim();
+      const alreadyVideo = /Veo|Video|视频|동영상/i.test(curText);
+      const alreadyImage = /Banana|Nano|Imagen|Image|图片|이미지/i.test(curText);
+      if (isVideo && alreadyVideo) {
+        console.log('[FantasyAutomation] 当前已是视频模式:', curText);
+        return true;
+      }
+      if (!isVideo && alreadyImage) {
+        console.log('[FantasyAutomation] 当前已是图片模式:', curText);
+        return true;
+      }
+    }
+
+    // 2. 检查页面上是否已有直接外显的模式 Tab
     const targetPattern = isVideo ? /视频|Video|동영상/i : /图片|Image|이미지/i;
+    const directTab = [...document.querySelectorAll('[role="tab"], button[id*="trigger-"]')].find(t => {
+      if (!isElementVisible(t)) return false;
+      const txt = (t.textContent || '').trim();
+      const id = t.id || '';
+      return targetPattern.test(txt) || (isVideo ? id.includes('VIDEO') : id.includes('IMAGE'));
+    });
 
-    const tabs = [...document.querySelectorAll('[role="tab"], button[id*="trigger-"]')];
-    const targetTab = tabs.find(t => targetPattern.test(t.textContent || '') || (isVideo ? t.id.includes('VIDEO') : t.id.includes('IMAGE')));
-
-    if (targetTab && targetTab.getAttribute('aria-selected') !== 'true') {
-      await clickElement(targetTab);
-      await sleep(400);
+    if (directTab) {
+      if (directTab.getAttribute('aria-selected') !== 'true') {
+        await clickElement(directTab);
+        await sleep(500);
+      }
       return true;
     }
-    return false;
+
+    // 3. 点击模型设置胶囊按钮打开设置面板
+    if (!modelBtn) {
+      console.warn('[FantasyAutomation] 未找到模型设置胶囊按钮');
+      return false;
+    }
+
+    await clickElement(modelBtn);
+    await sleep(600);
+
+    // 4. 在弹出的设置面板中寻找 Video / Image 选项或 Tab
+    const findModeTabInPanel = () => {
+      const allTabs = [...document.querySelectorAll('[role="tab"], button, [role="menuitem"], [role="radio"], .mat-mdc-menu-item')].filter(isElementVisible);
+      return allTabs.find(el => {
+        const txt = (el.textContent || '').trim();
+        const aria = el.getAttribute('aria-label') || '';
+        const sym = (el.querySelector('.google-symbols, i, span')?.textContent || '').trim();
+        const id = el.id || '';
+        if (isVideo) {
+          return /视频|Video|동영상/i.test(txt) || /视频|Video/i.test(aria) || sym === 'videocam' || id.includes('VIDEO');
+        } else {
+          return /图片|Image|이미지/i.test(txt) || /图片|Image/i.test(aria) || sym === 'image' || id.includes('IMAGE');
+        }
+      });
+    };
+
+    let panelTab = findModeTabInPanel();
+    if (!panelTab) {
+      await sleep(400);
+      panelTab = findModeTabInPanel();
+    }
+
+    if (panelTab) {
+      await clickElement(panelTab);
+      await sleep(600);
+    }
+
+    // 5. 关闭设置面板 (按 Escape 或点击空白处)
+    try {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+    } catch (_) {}
+    await sleep(300);
+
+    return true;
   }
 
   /**
