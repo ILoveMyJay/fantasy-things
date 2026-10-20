@@ -332,99 +332,200 @@
   }
 
   /**
-   * 在 /character 角色列表网格上，直接通过卡片菜单就地重命名（无需跳转，杜绝误退项目）
+   * 在角色详情编辑页 (/character/<id>) 中修改名称并保存
+   */
+  async function renameInCharacterEditPage(targetName) {
+    if (!targetName) return false;
+
+    // 1. 等待名称输入框就绪
+    let nameInput = null;
+    let headerInput = null;
+    const startWait = Date.now();
+    while (Date.now() - startWait < 5000) {
+      nameInput = document.querySelector('flow-character-form input.name-input, input[aria-label="角色名称"], input[placeholder="角色名称"]');
+      headerInput = document.querySelector('flow-character-edit-header input.editable-text-input, input[aria-label="可编辑文本"]');
+      if (nameInput || headerInput) break;
+      await sleep(200);
+    }
+
+    if (!nameInput && !headerInput) {
+      console.warn('[FantasyAutomation] 未在详情页找到角色名称输入框');
+      return false;
+    }
+
+    // 2. 双重设值：表单输入框 + 顶栏标题输入框
+    const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+
+    if (nameInput) {
+      nameInput.focus();
+      nativeSetter.call(nameInput, targetName);
+      nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+      nameInput.dispatchEvent(new Event('change', { bubbles: true }));
+      nameInput.dispatchEvent(new Event('blur', { bubbles: true }));
+      await sleep(150);
+    }
+
+    if (headerInput) {
+      headerInput.focus();
+      nativeSetter.call(headerInput, targetName);
+      headerInput.dispatchEvent(new Event('input', { bubbles: true }));
+      headerInput.dispatchEvent(new Event('change', { bubbles: true }));
+      headerInput.dispatchEvent(new Event('blur', { bubbles: true }));
+      await sleep(150);
+    }
+
+    // 3. 点击「完成修改」保存
+    const doneBtn = document.querySelector('flow-character-edit-header button[aria-label="完成修改"], button[aria-label="完成修改"]') ||
+      [...document.querySelectorAll('button')].find(b => {
+        const txt = (b.textContent || '').trim();
+        const aria = b.getAttribute('aria-label') || '';
+        const sym = (b.querySelector('.google-symbols, i, span')?.textContent || '').trim();
+        return /完成修改|完成|保存|Save|Done/i.test(txt) || /完成修改|完成|保存|Save|Done/i.test(aria) || sym === 'check';
+      });
+
+    if (doneBtn) {
+      doneBtn.click();
+      await sleep(1200);
+      return true;
+    } else {
+      if (nameInput) {
+        nameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      }
+      await sleep(600);
+      return true;
+    }
+  }
+
+  /**
+   * 角色卡片更名正名（双引擎：优先卡片悬停就地更名，未果则自动无缝点击卡片进入详情页保存）
    */
   async function renameCharacterTile(targetName, options = {}) {
     if (!targetName) return false;
 
-    // 1. 等待卡片就绪 (最多等待 3 秒)
-    let tiles = [];
-    const waitTileStart = Date.now();
-    while (Date.now() - waitTileStart < 3000) {
-      tiles = [...document.querySelectorAll('flow-character-tile, [class*="character-tile"], flow-character-card')];
-      if (tiles.length > 0) break;
-      await sleep(250);
-    }
-    if (!tiles.length) return false;
-
-    // 2. 优先寻找「未命名的角色」卡片；若指定了索引则支持指定；兜底取末尾卡片
-    let tile = null;
-    if (typeof options.index === 'number' && tiles[options.index]) {
-      tile = tiles[options.index];
-    } else {
-      tile = tiles.find(t => {
-        const nameSpan = t.querySelector('.character-tile-name, [class*="name"]');
-        const txt = (nameSpan ? nameSpan.textContent : t.textContent) || '';
-        return /未命名的角色|Unnamed\s*character|未命名/i.test(txt.trim());
-      }) || tiles[tiles.length - 1];
+    // 0. 若当前已处于角色编辑详情页，直接在表单中设值保存
+    if (/\/character\/[a-zA-Z0-9_-]+/.test(window.location.pathname) || document.querySelector('flow-character-edit-header, flow-character-form')) {
+      return await renameInCharacterEditPage(targetName);
     }
 
-    if (!tile) return false;
+    // 1. 确保位于角色页面 (/character)
+    await navigateToCharacterPage();
+    await sleep(400);
 
-    // 3. 寻找卡片右上角的三点“更多选项”菜单按钮 (⋮)
-    const moreBtn = tile.querySelector('button[aria-label*="更多" i], button[aria-label*="More" i], button[aria-label*="option" i]') ||
-      [...tile.querySelectorAll('button')].find(b => {
-        const sym = (b.querySelector('.google-symbols, i, span')?.textContent || '').trim();
-        return sym === 'more_vert' || sym === 'more_horiz';
-      }) || [...tile.querySelectorAll('button')].pop();
+    // 2. 寻找目标角色卡片（优先寻找“未命名的角色”卡片）
+    const findTargetTile = () => {
+      const tiles = [...document.querySelectorAll('flow-character-tile, flow-tile-container, [class*="character-tile"], [data-tile-id]')];
+      return tiles.find(t => /未命名的角色|Unnamed\s*character/i.test(t.textContent || '')) ||
+             tiles.find(t => t.querySelector('img[alt*="角色"]') || t.querySelector('.character-tile-name')) ||
+             (typeof options.index === 'number' && tiles[options.index]) ||
+             tiles[tiles.length - 1];
+    };
 
-    if (moreBtn && isElementVisible(moreBtn)) {
-      await clickElement(moreBtn);
-      await sleep(350);
+    let tile = findTargetTile();
+    if (!tile) {
+      const waitStart = Date.now();
+      while (Date.now() - waitStart < 3000) {
+        await sleep(250);
+        tile = findTargetTile();
+        if (tile) break;
+      }
+    }
 
-      const renameMenuItem = [...document.querySelectorAll('.mat-mdc-menu-item, [role="menuitem"], button, div')].find(el => {
-        const txt = (el.textContent || '').trim();
-        return /^(重命名|Rename|이름\s*변경)$/i.test(txt) || /重命名|Rename/i.test(txt);
-      });
+    if (!tile) {
+      console.warn('[FantasyAutomation] 未找到可命名的角色卡片');
+      return false;
+    }
 
-      if (renameMenuItem && isElementVisible(renameMenuItem)) {
-        await clickElement(renameMenuItem);
+    // ========================================================
+    // 策略 1：卡片悬停 -> 更多选项 (⋮) -> 重命名 (In-place Rename)
+    // ========================================================
+    try {
+      // 触发 hover 事件，激活卡片的 .hover-overlay
+      tile.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      tile.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      tile.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+      await sleep(150);
+
+      const moreBtn = tile.querySelector('button[aria-label="更多选项"], button[aria-label*="更多"], button[aria-label*="More"]') ||
+        [...tile.querySelectorAll('button')].find(b => {
+          const sym = (b.querySelector('.google-symbols, i, span')?.textContent || '').trim();
+          return sym === 'more_vert' || sym === 'more_horiz';
+        });
+
+      if (moreBtn) {
+        moreBtn.click();
         await sleep(350);
 
-        const renameInput = document.querySelector('.rename-tile-overlay input, .cdk-overlay-pane input, input.editable-text-input, input[aria-label*="名称" i], input[placeholder*="名称" i]');
-        if (renameInput) {
-          setNativeInputValue(renameInput, targetName);
-          await sleep(200);
+        // 匹配菜单项中的「重命名」
+        const menuItems = [...document.querySelectorAll('.mat-mdc-menu-item, [role="menuitem"], .mat-menu-item')];
+        const renameItem = menuItems.find(el => /重命名|Rename/i.test((el.textContent || '').trim()));
 
-          const confirmBtn = document.querySelector('.rename-tile-overlay button[aria-label="完成"], .cdk-overlay-pane button[aria-label="完成"], button[aria-label="完成"], button[aria-label="Done"]');
-          if (confirmBtn && isElementVisible(confirmBtn)) {
-            await clickElement(confirmBtn);
-          } else {
-            renameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-            renameInput.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-            renameInput.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+        if (renameItem) {
+          renameItem.click();
+          await sleep(350);
+
+          const renameInput = document.querySelector('.rename-tile-overlay input.editable-text-input, .cdk-overlay-pane input, input.editable-text-input.editing') ||
+                              document.activeElement;
+
+          if (renameInput && renameInput.tagName === 'INPUT') {
+            renameInput.focus();
+            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nativeSetter.call(renameInput, targetName);
+            renameInput.dispatchEvent(new Event('input', { bubbles: true }));
+            renameInput.dispatchEvent(new Event('change', { bubbles: true }));
+            await sleep(150);
+
+            const confirmBtn = document.querySelector('.rename-tile-overlay button[aria-label="完成"], .cdk-overlay-pane button[aria-label="完成"]') ||
+              [...document.querySelectorAll('.rename-tile-overlay button')].find(b => {
+                const sym = (b.querySelector('.google-symbols, i, span')?.textContent || '').trim();
+                return sym === 'done' || sym === 'check';
+              });
+
+            if (confirmBtn) {
+              confirmBtn.click();
+            } else {
+              renameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+              renameInput.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+            }
+            await sleep(600);
+
+            if (tile.textContent && tile.textContent.includes(targetName)) {
+              console.log(`[FantasyAutomation] 策略1 (就地更名) 成功更新角色名为【${targetName}】`);
+              return true;
+            }
           }
-          await sleep(500);
-          console.log(`[FantasyAutomation] 成功通过卡片菜单就地重命名为【${targetName}】`);
-          return true;
         }
       }
+    } catch (err) {
+      console.warn('[FantasyAutomation] 策略1 就地更名遇阻，将自动切换至策略2 (详情页更名):', err?.message);
+    }
+
+    // ========================================================
+    // 策略 2：直接点击角色卡片进入详情页 (/character/<id>) -> 修改名称 -> 完成修改
+    // ========================================================
+    console.log(`[FantasyAutomation] 启动策略2：点击角色卡片进入详情页正名为【${targetName}】...`);
+    try {
+      const clickable = tile.querySelector('img, .character-tile-container, span') || tile;
+      await clickElement(clickable);
+      await sleep(1000);
+
+      const success = await renameInCharacterEditPage(targetName);
+      if (success) {
+        console.log(`[FantasyAutomation] 策略2 (详情页更名) 成功正名为【${targetName}】并已保存`);
+        return true;
+      }
+    } catch (err2) {
+      console.warn('[FantasyAutomation] 策略2 异常:', err2?.message);
     }
 
     return false;
   }
 
   /**
-   * 角色重命名（优先网格卡片菜单就地重命名，或详情页表单修改）
+   * 角色重命名总入口
    */
   async function renameCharacter(name) {
     if (!name) return false;
-
-    // 1. 若当前在卡片列表，直接通过磁贴菜单就地重命名
-    const tileRenamed = await renameCharacterTile(name);
-    if (tileRenamed) return true;
-
-    // 2. 尝试角色编辑表单中的输入框
-    const formInput = document.querySelector('flow-character-form input.name-input, flow-character-edit-header input.editable-text-input, input[aria-label="角色名称"]');
-    if (formInput && isElementVisible(formInput)) {
-      setNativeInputValue(formInput, name);
-      await sleep(150);
-      const saveBtn = document.querySelector('flow-character-edit-header button[aria-label="完成修改"], button[aria-label="完成修改"]');
-      if (saveBtn) await clickElement(saveBtn);
-      return true;
-    }
-
-    return false;
+    return await renameCharacterTile(name);
   }
 
   /**
@@ -500,18 +601,18 @@
     await sleep(600);
 
     // 2. 检查角色库是否已存在同名角色
-    const existingTiles = [...document.querySelectorAll('flow-character-tile')];
+    const existingTiles = [...document.querySelectorAll('flow-character-tile, flow-tile-container, [class*="character-tile"], [data-tile-id]')];
     const alreadyBuilt = existingTiles.find(t => (t.textContent || '').includes(targetName));
     if (alreadyBuilt) {
       console.log(`[FantasyAutomation] 角色【${targetName}】已在 Flow 角色库中存在，跳过导入`);
       return { ok: true, skipped: true };
     }
 
-    // 3. ★ 核心优化：若已有待命名的角色卡片，直接在网格上就地正名！绝不进入详情页，绝不点返回！
+    // 3. ★ 核心优化：若已有待命名的角色卡片，直接启动更名正名！绝不重复创建新实体！
     const unnamedTile = existingTiles.find(t => /未命名的角色|Unnamed/i.test(t.textContent || ''));
     if (unnamedTile) {
-      console.log(`[FantasyAutomation] 发现待命名角色卡片，直接在卡片上就地正名为【${targetName}】...`);
-      const renamed = await renameCharacterTile(targetName);
+      console.log(`[FantasyAutomation] 发现待命名角色卡片，直接启动更名正名为【${targetName}】...`);
+      const renamed = await renameCharacterTile(targetName, options);
       if (renamed) {
         return { ok: true, renamed: true };
       }
@@ -870,6 +971,7 @@
     clickElement,
     clickSubmit,
     setNativeInputValue,
+    renameInCharacterEditPage,
     renameCharacterTile,
     renameCharacter,
     navigateToCharacterPage,
