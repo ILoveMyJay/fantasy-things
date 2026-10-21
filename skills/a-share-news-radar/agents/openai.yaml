@@ -1,0 +1,4 @@
+interface:
+  display_name: "A股新闻雷达"
+  short_description: "Daily A-share event radar with candidate pools"
+  default_prompt: "Use $a-share-news-radar to generate a pre-market A-share news radar with event chains, sector themes, candidate pools, confidence, risks, and invalidation conditions."

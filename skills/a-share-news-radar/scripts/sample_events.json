@@ -1,0 +1,58 @@
+{
+  "events": [
+    {
+      "title": "春晚机器人舞蹈带动人形机器人关注",
+      "event_type": "AI And Technology Releases",
+      "fact_strength": 8,
+      "industry_distance": 6,
+      "earnings_relevance": 5,
+      "policy_persistence": 4,
+      "crowding_risk": 7,
+      "counterevidence_risk": 4,
+      "chain": "春晚机器人曝光 -> 市场关注国产人形机器人 -> 零部件和控制系统候选池",
+      "themes": ["机器人", "具身智能"],
+      "candidates": {
+        "direct": ["鸣志电器", "埃斯顿"],
+        "watch_verify": ["奥比中光", "机器人"]
+      },
+      "window": "1-3 trading days",
+      "invalidation": "核心个股连续加速且未见订单或供应链确认"
+    },
+    {
+      "title": "未经证实的海外AI应用传闻",
+      "event_type": "AI And Technology Releases",
+      "fact_strength": 2,
+      "industry_distance": 3,
+      "earnings_relevance": 2,
+      "policy_persistence": 1,
+      "crowding_risk": 6,
+      "counterevidence_risk": 8,
+      "chain": "传闻 -> 情绪映射 -> AI应用概念",
+      "themes": ["AI应用"],
+      "candidates": {
+        "watch_verify": ["中文在线", "视觉中国"]
+      },
+      "window": "same day",
+      "invalidation": "无权威来源或公司关联确认"
+    },
+    {
+      "title": "煤矿事故触发安全检查预期",
+      "event_type": "Supply Disruption, Accidents, And Safety Inspections",
+      "fact_strength": 9,
+      "industry_distance": 8,
+      "earnings_relevance": 7,
+      "policy_persistence": 6,
+      "crowding_risk": 5,
+      "counterevidence_risk": 5,
+      "chain": "重大煤矿事故 -> 安全检查和停产预期 -> 焦煤焦炭供给收缩",
+      "themes": ["焦煤", "焦炭", "安全生产"],
+      "candidates": {
+        "direct": ["山西焦煤", "陕西煤业"],
+        "indirect": ["山西焦化"]
+      },
+      "window": "1-2 weeks",
+      "invalidation": "检查范围有限或下游钢厂需求快速走弱"
+    }
+  ]
+}
+
