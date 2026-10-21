@@ -11,7 +11,11 @@
 | 分时（逐分钟） | 腾讯 `web.ifzq.gtimg.cn` | — | ✅ 可用 |
 | 分钟K m1/m5/m15/m30/m60 | 腾讯 `ifzq.gtimg.cn` | — | ✅ 可用 |
 | 大单净量 / 资金流 | 新浪 `vip.stock.finance.sina.com.cn` | — | ✅ 可用（单只） |
+| 公告原文 | 巨潮 `www.cninfo.com.cn` | — | ✅ 可用 |
 | 交易日判断 | 腾讯 K线最后日期 | tushare `trade_cal` | ✅ 可用 |
+
+入口脚本：行情走 `scripts/market_snapshot.py`，公告走 `scripts/announcements.py`，
+可达性用 `scripts/doctor.py` 自检。
 
 ## 不可用的源（不要浪费时间）
 
@@ -91,6 +95,67 @@ https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/MoneyFlow.s
 ### 限制
 
 **只能单只查询**。逗号拼接多只只会返回第一只。20 只候选股需 20 次请求（约 25 秒），因此只对最终候选池（5~15 只）查询，不要对全市场查。
+
+## 巨潮资讯公告（S 级证据的唯一通道）
+
+「公告确认」必须来自交易所披露。此前只能靠 web_search 撞媒体转述，强度不足；
+巨潮这条通道打通后，可以直接拿到公告原文 PDF。
+
+### 全市场按日期+类别扫
+
+```
+POST http://www.cninfo.com.cn/new/hisAnnouncement/query
+Content-Type: application/x-www-form-urlencoded
+Referer: http://www.cninfo.com.cn/new/commonUrl?url=disclosure/list/notice
+
+pageNum=1&pageSize=30&tabName=fulltext&column=szse&plate=&stock=
+&searchkey=&secid=&category=<类别代码>&trade=&seDate=2026-10-20~2026-10-21
+&sortName=&sortType=&isHLtitle=true
+```
+
+- `column=szse` 实测**返回全市场**（含科创板 688xxx、沪市 60xxxx），不要被参数名误导
+- `seDate` 用 `起~止`，区间越宽返回越多（2 个交易日约 2100~2500 条）
+- `category` 留空 = 全部。常用类别见 `announcements.py categories`
+
+### 按股票查公告
+
+```
+stock=<6位代码>,<orgId>&column=<sse|szse|bj>
+```
+
+**必须带 orgId**，只给代码返回 0 条。orgId 通过搜索接口拿：
+
+```
+POST http://www.cninfo.com.cn/new/information/topSearch/query
+keyWord=600519&maxNum=10
+→ [{"code":"600519","orgId":"gssh0600519","zwjc":"贵州茅台"}]
+```
+
+`column` 按代码前缀判断：`6xx`→sse，`0xx/3xx`→szse，`4xx/8xx/9xx`→bj。
+脚本会把 orgId 缓存在 `cache/cninfo-orgid.json`，避免重复查询。
+
+### 返回字段
+
+`secCode` / `secName` / `announcementTitle` / `announcementTime`（epoch 毫秒）/
+`adjunctUrl`（相对路径）/ `announcementType`
+
+PDF 直链拼法：`http://static.cninfo.com.cn/` + `adjunctUrl`
+实测可下载，`Content-Type: application/pdf`，前 8 字节为 `%PDF-1.7`。
+
+### 实测样例
+
+| 查询 | 结果 |
+|---|---|
+| 2026-10-20~10-21 业绩预告 | 14 条（澜起科技预增、天齐锂业业绩预告等） |
+| 2026-10-20~10-21 三季报 | 98 条 |
+| 2026-10-20~10-21 全部 | 2176 条 |
+| 贵州茅台 近 90 天 | 6 条（半年度报告、会计政策变更等） |
+
+### 使用纪律
+
+- 公告标题不等于事实，要打开 PDF 确认口径（预增 / 预减 / 扭亏 / 略增 差别很大）
+- 巨潮只覆盖 A 股法定披露；港股、美股公告不在此列
+- 不要高频轮询全市场接口，按天查一次即可
 
 ## tushare 免费档的额度真相
 

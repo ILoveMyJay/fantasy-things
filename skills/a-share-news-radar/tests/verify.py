@@ -6,6 +6,7 @@
     python3 tests/verify.py            # 全量（含联网的行情测试）
     python3 tests/verify.py --offline  # 跳过联网测试
 """
+import json
 import os
 import py_compile
 import subprocess
@@ -53,10 +54,11 @@ check("字符数 ≤ 4500", len(txt) <= 4500, "%d 字符" % len(txt))
 longest = max(len(l) for l in txt.split("\n"))
 check("最长行 < 1000", longest < 1000, "%d" % longest)
 for key in ["workflow.md", "workflow-phase1.md", "workflow-phase2.md",
-            "market_snapshot.py", "lint_report.py", "db.py",
-            "data-sources.md", "calendar-scanning.md", "source-policy.md"]:
+            "market_snapshot.py", "announcements.py", "lint_report.py",
+            "db.py", "doctor.py", "data-sources.md", "calendar-scanning.md",
+            "source-policy.md", "sample-report.md"]:
     check("引用 %s" % key, key in txt)
-check("声明 python3.11", "python3.11" in txt)
+check("声明 Python >= 3.7", "3.7" in txt)
 check("声明不构成投资建议", "不构成投资建议" in txt or "不给买卖建议" in txt)
 check("根目录无孤儿 report-template.md",
       not os.path.exists(os.path.join(BASE, "report-template.md")))
@@ -70,16 +72,19 @@ for f in ["workflow.md", "workflow-phase1.md", "workflow-phase2.md",
           "candidate-verification.md", "report-template.md"]:
     check("references/%s" % f, os.path.exists(os.path.join(REFS, f)))
 
-for f in ["market_snapshot.py", "db.py", "lint_report.py", "score_events.py",
-          "run_historical_cases.py", "sample_events.json"]:
+for f in ["market_snapshot.py", "announcements.py", "db.py", "lint_report.py",
+          "score_events.py", "doctor.py", "run_historical_cases.py",
+          "sample_events.json"]:
     check("scripts/%s" % f, os.path.exists(os.path.join(SCRIPTS, f)))
 
 for f in ["test_market.py", "test_db.py", "test_lint.py", "test_pipeline.py",
-          "verify.py"]:
+          "test_announcements.py", "verify.py"]:
     check("tests/%s" % f, os.path.exists(os.path.join(TESTS, f)))
 
 check("fixtures/historical_cases.json 存在",
       os.path.exists(os.path.join(FIXTURES, "historical_cases.json")))
+check("examples/sample-report.md 存在",
+      os.path.exists(os.path.join(BASE, "examples", "sample-report.md")))
 
 # ---------------------------------------------------------------------------
 line("C. 所有脚本可编译")
@@ -142,7 +147,47 @@ check("落库链路通过", "reviewed=4" in out and "hit_rate" in out,
       "含 review + stats" if "reviewed=4" in out else (p.stderr or "")[:80])
 
 # ---------------------------------------------------------------------------
-line("H. 行情数据层" + ("（offline，跳过）" if OFFLINE else ""))
+line("H. 公告通道 announcements.py")
+
+p = run([PY, os.path.join(TESTS, "test_announcements.py")] + (["--offline"] if OFFLINE else []))
+out = p.stdout or ""
+n_pass = out.count("[PASS]")
+n_fail = out.count("[FAIL]")
+n_skip = out.count("[SKIP]")
+check("公告测试全通过", n_fail == 0 and n_pass >= 15,
+      "pass=%d fail=%d skip=%d" % (n_pass, n_fail, n_skip))
+if n_fail:
+    for ln in out.split("\n"):
+        if "[FAIL]" in ln:
+            print("       " + ln.strip())
+
+# ---------------------------------------------------------------------------
+line("I. 示例报告通过 lint")
+
+sample = os.path.join(BASE, "examples", "sample-report.md")
+if not os.path.exists(sample):
+    check("examples/sample-report.md 存在", False)
+else:
+    p = run([PY, os.path.join(SCRIPTS, "lint_report.py"), sample, "--phase", "phase2"])
+    try:
+        doc = json.loads(p.stdout)
+        check("示例报告 lint 通过", doc.get("status") == "pass",
+              "status=%s errors=%s warns=%s" % (doc.get("status"),
+                                                doc.get("error_count"),
+                                                doc.get("warning_count")))
+    except ValueError:
+        check("示例报告 lint 通过", False, (p.stdout or p.stderr)[:80])
+
+# ---------------------------------------------------------------------------
+line("J. 环境自检 doctor.py")
+
+p = run([PY, os.path.join(SCRIPTS, "doctor.py"), "--quick"])
+out = p.stdout or ""
+check("doctor 可执行且关键能力齐备", p.returncode == 0,
+      (out.strip().split("\n")[-1] if out.strip() else (p.stderr or "")[:80]))
+
+# ---------------------------------------------------------------------------
+line("K. 行情数据层" + ("（offline，跳过）" if OFFLINE else ""))
 
 if OFFLINE:
     print("  已指定 --offline，跳过联网测试")

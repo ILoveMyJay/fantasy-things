@@ -21,7 +21,7 @@
 | **`edge-tts`** | [`skills/edge-tts`](./skills/edge-tts/) | 基于微软 Edge Azure 神经网络大模型的高保真文本转语音。**零 API Key、零费用、零限流、秒级生成**，提供 400+ 多国语言极拟真音色，完美支持 Windows 10/11 跨平台。 |
 | **`site-walkthrough-video`** | [`skills/site-walkthrough-video`](./skills/site-walkthrough-video/) | 网站用户旅程导览视频制作全流程。从首页开始模拟真实用户的滚动、点击、导航行为，最终进入目标页面展示内容。含完整长图拼接脚本、可复用 HTML 模板、edge-tts 语音封装，输出 1920×1080 MP4。 |
 | **`wechat-pay`** | [`skills/wechat-pay`](./skills/wechat-pay/) | 微信支付 Native 扫码支付完整接入方案。**零 npm 依赖**，纯 Web Crypto API 实现 RSA-SHA256 签名与 AES-256-GCM 解密，完美适配 Cloudflare Workers/Pages Functions 运行时。含工具库、下单/查单/回调三个接口模板、数据库 DDL 及完整知识文档。 |
-| **`a-share-news-radar`** | [`skills/a-share-news-radar`](./skills/a-share-news-radar/) | A 股新闻投资方向雷达。**两阶段**：盘前预期扫描（08:00）+ 盘后确认跟踪（16:00），走 `事件 → 影响链 → 板块主题 → 候选股票池` 链路。核心是**证据分级**：S/A/B/C 四级来源绑定六种证据标签，情绪映射类概念股在打分上永远到不了高置信度。含确定性事件打分、报告字段校验器（`lint_report.py`）、SQLite 决策快照与 T+N 命中率回看、7 个历史回归用例。**行情零 token**：腾讯取快照/日K/分时/分钟K，新浪取四档资金与大单净量。 |
+| **`a-share-news-radar`** | [`skills/a-share-news-radar`](./skills/a-share-news-radar/) | A 股新闻投资方向雷达。**两阶段**：盘前预期扫描（08:00）+ 盘后确认跟踪（16:00），走 `事件 → 影响链 → 板块主题 → 候选股票池` 链路。核心是**证据分级**：S/A/B/C 四级来源绑定六种证据标签，情绪映射类概念股在打分上永远到不了高置信度。含确定性事件打分、报告字段校验器（`lint_report.py`）、SQLite 决策快照与 T+N 命中率回看、7 个历史回归用例。**数据零 token**：腾讯取快照/日K/分时/分钟K，新浪取四档资金与大单净量，**巨潮资讯取公告原文 PDF**（「公告确认」标签的唯一合法来源）。附 `doctor.py` 环境自检，换机器先跑一遍就知道哪些通道可用。 |
 
 ---
 

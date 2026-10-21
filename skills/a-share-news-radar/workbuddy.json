@@ -2,8 +2,8 @@
   "id": "a-share-news-radar",
   "name": "a-share-news-radar",
   "displayName": "A股新闻雷达",
-  "version": "1.0.0",
-  "description": "把新闻事件转成 A 股研究方向的两阶段雷达：盘前预期扫描 + 盘后确认跟踪。含事件影响链分析、S/A/B/C 来源分级、六种证据标签、确定性事件打分、报告字段校验、SQLite 决策快照与 T+N 命中率回看。行情数据走腾讯/新浪免费接口，零 token。",
+  "version": "1.1.0",
+  "description": "把新闻事件转成 A 股研究方向的两阶段雷达：盘前预期扫描 + 盘后确认跟踪。含事件影响链分析、S/A/B/C 来源分级、六种证据标签、确定性事件打分、报告字段校验、SQLite 决策快照与 T+N 命中率回看。行情走腾讯、资金流走新浪、公告走巨潮，全部零 token。",
   "author": "ILoveMyJay",
   "license": "MIT",
   "tags": [
@@ -25,8 +25,17 @@
       "qt.gtimg.cn",
       "ifzq.gtimg.cn",
       "web.ifzq.gtimg.cn",
-      "vip.stock.finance.sina.com.cn"
+      "vip.stock.finance.sina.com.cn",
+      "www.cninfo.com.cn",
+      "static.cninfo.com.cn"
     ]
+  },
+  "entrypoints": {
+    "doctor": "scripts/doctor.py",
+    "market": "scripts/market_snapshot.py",
+    "announcements": "scripts/announcements.py",
+    "lint": "scripts/lint_report.py",
+    "db": "scripts/db.py"
   },
   "agentCreated": true
 }
