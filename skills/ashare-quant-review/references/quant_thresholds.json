@@ -1,0 +1,63 @@
+{
+  "description": "A股量化复盘与科技成长七大看板量化阈值与决策规则表",
+  "tech_crowding_ratio_tcr": {
+    "definition": "TCR_DoubleTech = (创业板全板综指成交额 + 科创板全板综指成交额) / 沪深两市总成交额",
+    "extreme_froth": {
+      "condition": "TCR_DoubleTech > 40.0%",
+      "status": "极端过热与资金虹吸",
+      "action": "若伴随放量滞涨（成交放大但涨幅<0.5%），触发科技成长减仓防守，谨防盛极而衰分歧出货"
+    },
+    "healthy": {
+      "condition": "25.0% <= TCR_DoubleTech <= 33.0%",
+      "status": "健康活跃与良性换手",
+      "action": "成长风格处于正常上升主升浪或健康震荡，维持多头持仓"
+    },
+    "freezing_point": {
+      "condition": "TCR_DoubleTech < 20.0%",
+      "status": "情绪冰点与极度缩量",
+      "action": "双创板块交投冰点，若跌至重要均线缩量止跌，构成左侧战略性建仓布局区间"
+    }
+  },
+  "cffex_basis_discount": {
+    "definition": "Annualized Discount = (Futures_Price - Spot_Price) / Spot_Price * (365 / Days_to_Expiry)",
+    "extreme_panic_reversal": {
+      "condition": "IC或IM主力年化贴水率 <= -25.0%",
+      "status": "空头极度恐慌对冲与贴水极限",
+      "action": "极值反转信号！做空成本高昂，空头动能宣泄殆尽，统计胜率超80%在后续1~3个月走出均值修复反弹"
+    },
+    "neutral_hedge_increase": {
+      "condition": "中信期货等头部席位净空单激增，但现货放量大涨",
+      "status": "量化中性策略加仓多头被动对冲",
+      "action": "解读为现货多头真实建仓，非看空大盘"
+    },
+    "basis_convergence": {
+      "condition": "临近第三个周五交割日，当月基差强制归零",
+      "status": "交割日效应收敛",
+      "action": "关注移仓换月基差损耗与交割日下午13:30~14:30套利平仓脉冲"
+    }
+  },
+  "volume_ratio_vr20": {
+    "definition": "VR20 = 当日全市场成交额 / 20日均成交额",
+    "freezing_volume": { "condition": "VR20 < 0.70", "status": "极度地量，接近变盘拐点" },
+    "balanced": { "condition": "0.90 <= VR20 <= 1.25", "status": "常态均衡量能" },
+    "froth_volume": { "condition": "VR20 > 1.50", "status": "天量过热，需谨防巨量见顶" }
+  },
+  "margin_clearing_em": {
+    "definition": "Em = (-融资余额降幅%) / (-股价跌幅%)",
+    "thoroughly_cleared": { "condition": "Em > 1.0", "status": "杠杆资金充分出清，浮筹清洗干净，反弹阻力极小" },
+    "trapped_holding": { "condition": "0 <= Em <= 0.7", "status": "死扛套牢区，融资客拒绝止损，上方抛压沉重" },
+    "reverse_adding_danger": { "condition": "Em < 0", "status": "逆势加仓高危区，跌幅加深易引发强平踩踏" }
+  },
+  "national_team_footprint": {
+    "flow_threshold": "单日核心宽基ETF合计净流入 > 300 亿元",
+    "tail_volume_threshold": "尾盘 14:15~15:00 成交量占比 > 35%",
+    "iopv_premium": "ETF二级市场价格高于IOPV净值 > +0.20%"
+  },
+  "oversold_bias": {
+    "extreme_oversold": {
+      "condition": "BIAS5 <= -2.0% 且 BIAS20 <= -3.5%",
+      "status": "极限负乖离超卖",
+      "action": "易触发强力均值回归反抽脉冲"
+    }
+  }
+}

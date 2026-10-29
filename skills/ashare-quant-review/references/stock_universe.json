@@ -1,0 +1,53 @@
+{
+  "description": "A股科技成长三层穿透映射股票池与监控矩阵",
+  "tier1_direct_supply": {
+    "logic": "直接承接全球AI龙头订单外溢，财报业绩与海外龙头高度同步",
+    "stocks": [
+      { "code": "688008.SH", "name": "澜起科技", "subsector": "DDR5内存接口芯片(RCD/DB)/MRDIMM", "catalyst": "全球AI服务器与传统服务器DDR5渗透率" },
+      { "code": "300475.SZ", "name": "香农芯创", "subsector": "SK海力士核心分销商", "catalyst": "HBM与企业级SSD存储颗粒ASP涨价弹性" },
+      { "code": "002409.SZ", "name": "雅克科技", "subsector": "前驱体/电子特气", "catalyst": "海外存储晶圆厂先进制程前驱体供货" },
+      { "code": "002156.SZ", "name": "通富微电", "subsector": "先进封装(2.5D/3D Chiplet)", "catalyst": "海外算力龙头芯片封测外包订单" },
+      { "code": "600584.SH", "name": "长电科技", "subsector": "先进封装测试", "catalyst": "高性能计算高密度封装需求" }
+    ]
+  },
+  "tier2_domestic_equipment_materials": {
+    "logic": "自主可控战略资产，与海外采购脱钩，真实业绩驱动力为本土晶圆厂(中芯/华虹/长鑫CXMT/长存YMTC)资本开支与自主招标",
+    "stocks": [
+      { "code": "002371.SZ", "name": "北方华创", "subsector": "平台级半导体设备(刻蚀/薄膜/热处理/清洗)", "catalyst": "国内先进制程与成熟制程晶圆厂扩产招标" },
+      { "code": "688012.SH", "name": "中微公司", "subsector": "等离子体刻蚀设备(CCP/ICP)/MOCVD", "catalyst": "先进制程刻蚀机国产化替代突破" },
+      { "code": "688072.SH", "name": "拓荆科技", "subsector": "薄膜沉积设备(PECVD/ALD/SACVD)", "catalyst": "先进制程薄膜沉积设备份额跃升" },
+      { "code": "688037.SH", "name": "芯源微", "subsector": "涂胶显影机/单片清洗设备", "catalyst": "前道涂胶显影机国产替代空间" },
+      { "code": "688082.SH", "name": "盛美上海", "subsector": "前道清洗设备/电镀设备", "catalyst": "兆声波清洗与先进封装湿法设备" },
+      { "code": "688019.SH", "name": "安集科技", "subsector": "化学机械抛光液(CMP)/光刻胶去除剂", "catalyst": "先进制程抛光液进口替代" },
+      { "code": "300054.SZ", "name": "鼎龙股份", "subsector": "CMP抛光垫/高端光刻胶", "catalyst": "CMP抛光垫全制程覆盖与验证导入" }
+    ]
+  },
+  "tier3_capex_beneficiaries": {
+    "logic": "北美四大云厂商(微软/谷歌/Meta/亚马逊)与国内大厂CAPEX直接受益方，高景气胜率极高，时滞1~2季度",
+    "stocks": [
+      { "code": "300308.SZ", "name": "中际旭创", "subsector": "800G/1.6T高速光模块", "catalyst": "北美云巨头资本开支直接采购，净利增速与CAPEX相关性>0.85" },
+      { "code": "300502.SZ", "name": "新易盛", "subsector": "800G/1.6T高速光模块", "catalyst": "海外头部CSP自研ASIC加速卡集群采购" },
+      { "code": "300394.SZ", "name": "天孚通信", "subsector": "光引擎/光无源器件", "catalyst": "CPO光电共封装核心部件配套" },
+      { "code": "002463.SZ", "name": "沪电股份", "subsector": "AI服务器与交换机高多层PCB", "catalyst": "高密度互连HDI与Rubin/Blackwell架构板卡配套" },
+      { "code": "300476.SZ", "name": "胜宏科技", "subsector": "算力加速卡高阶HDI", "catalyst": "英伟达/AMD加速卡核心PCB供应商" },
+      { "code": "002837.SZ", "name": "英维克", "subsector": "数据中心液冷温控", "catalyst": "单柜功率密度突破导致风冷向液冷强制切换" }
+    ]
+  },
+  "core_indices_etfs": {
+    "indices": [
+      { "code": "sh000001", "name": "上证指数", "type": "大盘宽基" },
+      { "code": "sz399001", "name": "深证成指", "type": "大盘宽基" },
+      { "code": "sz399102", "name": "创业板综", "type": "创业板全市场(涵盖全板1300+股)" },
+      { "code": "sz399006", "name": "创业板指", "type": "创业板核心龙头" },
+      { "code": "sh000680", "name": "科创综指", "type": "科创板全市场(涵盖全板570+股)" },
+      { "code": "sh000688", "name": "科创50", "type": "科创板核心50只龙头" },
+      { "code": "sh000685", "name": "科创芯片", "type": "硬科技芯片龙头指数" }
+    ],
+    "etfs": [
+      { "code": "sh510300", "name": "沪深300ETF华泰柏瑞", "type": "国家队主力防守托底标的" },
+      { "code": "sh588000", "name": "科创50ETF华夏", "type": "科创板核心流动性载体" },
+      { "code": "sz159915", "name": "创业板ETF易方达", "type": "创业板核心流动性载体" },
+      { "code": "sh588200", "name": "科创芯片ETF嘉实", "type": "芯片赛道资金动向风向标" }
+    ]
+  }
+}
