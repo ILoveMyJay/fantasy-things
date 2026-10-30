@@ -14,11 +14,12 @@ def fetch_market_volume_delta():
     用于确定性研判到底是【环比放量】还是【边际缩量】
     """
     try:
-        url_sh = 'https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.000001&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57&klt=101&fqt=1&end=20500101&lmt=5'
-        url_sz = 'https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=0.399001&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57&klt=101&fqt=1&end=20500101&lmt=5'
-        req_sh = urllib.request.Request(url_sh, headers={'User-Agent': 'Mozilla/5.0'})
-        req_sz = urllib.request.Request(url_sz, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req_sh, timeout=3) as r1, urllib.request.urlopen(req_sz, timeout=3) as r2:
+        url_sh = 'http://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.000001&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57&klt=101&fqt=1&end=20500101&lmt=5'
+        url_sz = 'http://push2his.eastmoney.com/api/qt/stock/kline/get?secid=0.399001&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57&klt=101&fqt=1&end=20500101&lmt=5'
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        req_sh = urllib.request.Request(url_sh, headers=headers)
+        req_sz = urllib.request.Request(url_sz, headers=headers)
+        with urllib.request.urlopen(req_sh, timeout=4) as r1, urllib.request.urlopen(req_sz, timeout=4) as r2:
             d_sh = json.loads(r1.read().decode())['data']['klines']
             d_sz = json.loads(r2.read().decode())['data']['klines']
             if len(d_sh) >= 2 and len(d_sz) >= 2:

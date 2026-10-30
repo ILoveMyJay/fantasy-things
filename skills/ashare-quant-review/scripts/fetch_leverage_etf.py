@@ -146,7 +146,7 @@ def get_market_breadth():
     down = 0
     flat = 0
     try:
-        url = 'https://push2.eastmoney.com/api/qt/ulist.np/get?secids=1.000001,0.399001&fields=f104,f105,f106'
+        url = 'http://push2.eastmoney.com/api/qt/ulist.np/get?secids=1.000001,0.399001&fields=f104,f105,f106'
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=3) as r:
             data = json.loads(r.read().decode())
