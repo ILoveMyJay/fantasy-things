@@ -44,9 +44,14 @@
   },
   "margin_clearing_em": {
     "definition": "Em = (-融资余额降幅%) / (-股价跌幅%)",
+    "t_minus_1_lag_rule": "两融数据法定T+1早间披露。盘前若显示T-1日净加仓，而T日现货暴跌，则该批资金已陷入深度被动浮亏，T+1日早盘09:30~10:00构成维保平仓的高危出清窗口。",
     "thoroughly_cleared": { "condition": "Em > 1.0", "status": "杠杆资金充分出清，浮筹清洗干净，反弹阻力极小" },
     "trapped_holding": { "condition": "0 <= Em <= 0.7", "status": "死扛套牢区，融资客拒绝止损，上方抛压沉重" },
     "reverse_adding_danger": { "condition": "Em < 0", "status": "逆势加仓高危区，跌幅加深易引发强平踩踏" }
+  },
+  "volume_delta_marginal": {
+    "definition": "Delta = 当日成交额 - 上一交易日成交额",
+    "shrinkage_divergence": "若 Delta < 0 且成交额处于1.5万亿上方，定性为【绝对巨量沉淀下的环比缩量分歧/滞涨】，严禁误判为放量杀跌。"
   },
   "national_team_footprint": {
     "flow_threshold": "单日核心宽基ETF合计净流入 > 300 亿元",

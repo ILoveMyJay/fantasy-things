@@ -56,23 +56,27 @@ def generate_markdown_dashboard(data):
     
     # 看板 2
     md.append("### 2. 【科技成长独立量能与拥挤度看板】")
-    md.append("| 监测标的/指数 | 代码 | 真实成交额(亿元) | 涨跌幅 | 拥挤度 TCR / 量能占比 | 状态诊断 |")
+    md.append(f"> **量能边际定性**：{tech.get('volume_edge_status', '常态交投')}。严格区分【绝对高位巨量】与【环比放量/缩量】。")
+    md.append("| 监测标的/指数 | 代码 | 真实成交额(亿元) | 涨跌幅 / 环比边际 | 拥挤度 TCR / 量能占比 | 状态诊断 |")
     md.append("| :--- | :---: | :---: | :---: | :---: | :--- |")
-    md.append(f"| **沪深两市总成交额** | 全市场 | `{tech.get('total_market_amount_yi')}` | - | `100.0%` | 全市场交投活跃 |")
+    md.append(f"| **沪深两市总成交额** | 全市场 | `{tech.get('total_market_amount_yi')}` | {tech.get('volume_edge_status')} | `100.0%` | {'绝对高位但边际缩量' if tech.get('volume_trend')=='SHRINKING' else '放量交投活跃'} |")
     md.append(f"| **创业板综 (全板1300+股)** | `sz399102` | `{tech.get('chinext_all_amount_yi')}` | `{tech.get('indices_detail',{}).get('399102',{}).get('pct_chg')}%` | TCR `{tech.get('tcr_chinext')}%` | 涵盖创业板全市场 100% 真实量能 |")
     md.append(f"| **科创综指 (全板570+股)** | `sh000680` | `{tech.get('star_all_amount_yi')}` | `{tech.get('indices_detail',{}).get('000680',{}).get('pct_chg')}%` | TCR `{tech.get('tcr_star')}%` | 涵盖科创板全市场 100% 真实量能 |")
     md.append(f"| *科创50 (仅50只龙头)* | `sh000688` | `{tech.get('star50_amount_yi')}` | `{tech.get('indices_detail',{}).get('000688',{}).get('pct_chg')}%` | 占比约 31% | 仅代表硬科技大市值龙头走势 |")
     md.append(f"| **科创芯片指数** | `sh000685` | `{tech.get('semi_amount_yi')}` | `{tech.get('indices_detail',{}).get('000685',{}).get('pct_chg')}%` | TCR `{tech.get('tcr_semi')}%` | 芯片核心赛道交投温度计 |")
-    md.append(f"| **双创总拥挤度 (TCR_DoubleTech)** | 创业+科创 | `{round(tech.get('chinext_all_amount_yi',0)+tech.get('star_all_amount_yi',0), 2)}` | - | **`{tech.get('tcr_double_tech')}%`** | **{tech.get('crowding_status')}** |\n")
+    md.append(f"| **双创总拥挤度 (TCR_DoubleTech)** | 创业+科创 | `{round(tech.get('chinext_all_amount_yi',0)+tech.get('star_all_amount_yi',0), 2)}` | - | **`{tech.get('tcr_double_tech')}%`** | **{tech.get('crowding_status')}** |")
+    md.append(f"> **双创统计口径说明**：上述为指数切片口径（合计 `{round(tech.get('chinext_all_amount_yi',0)+tech.get('star_all_amount_yi',0), 2)} 亿`，占比 `{tech.get('tcr_double_tech')}%`）；若按交易所全板块快报（加计盘后定价及大宗，约 `{tech.get('board_official_total_yi')} 亿`，占比 `{tech.get('tcr_double_tech_board')}%`），两口径均确认处于 >40% 极端过热预警区。\n")
     
     # 看板 3
     md.append("### 3. 【两融杠杆水位与出清度看板】")
-    md.append("| 两融监测项 | 最新数据 | 单日变动 | 预警基准线 | 杠杆出清评估 |")
+    md.append(f"> **法定披露时效提醒**：{margin.get('date_note', '交易所两融法定T+1日盘前披露，存在1个交易日时滞')}。推演时须严格分清持仓加减与当日现货走势的时序因果，严禁倒因为果。")
+    md.append("| 两融监测项 | 业务基准日期 | 最新数据 | 单日变动 | 预警基准与出清评估 |")
     md.append("| :--- | :---: | :---: | :---: | :--- |")
-    md.append(f"| **全市场两融余额** | `{margin.get('total_margin_yi')} 亿元` | `+{margin.get('margin_change_yi')} 亿元` | 警戒线 2.4万亿 | 杠杆交投维持高位 |")
-    md.append(f"| **融资余额 / 融券余额** | `{margin.get('total_financing_yi')} 亿 / {margin.get('total_securities_lending_yi')} 亿` | - | 融券占比极低 | 做空受限，以融资多头为主 |")
+    chg_sign = "+" if margin.get('margin_change_yi', 0) >= 0 else ""
+    md.append(f"| **全市场两融余额** | `{margin.get('trade_date')}` | `{margin.get('total_margin_yi')} 亿元` | `{chg_sign}{margin.get('margin_change_yi')} 亿元` | 警戒线 2.4万亿（{'杠杆逆势加仓承压' if margin.get('margin_change_yi',0)>0 else '杠杆出清净流出'}） |")
+    md.append(f"| **融资余额 / 融券余额** | `{margin.get('trade_date')}` | `{margin.get('total_financing_yi')} 亿 / {margin.get('total_securities_lending_yi')} 亿` | - | 融券占比极低，主要由融资多头主导 |")
     ksm = leverage.get('key_stock_margin', {})
-    md.append(f"| **重点标的: {ksm.get('stock_name')}({ksm.get('stock_code')})** | `{ksm.get('rzye_yi')} 亿元` | `净买入 {ksm.get('net_buy_yi')} 亿元` | 浮筹弹性 $E_m$ | {ksm.get('status')} |\n")
+    md.append(f"| **重点标的: {ksm.get('stock_name')}({ksm.get('stock_code')})** | `{ksm.get('trade_date')}` | `{ksm.get('rzye_yi')} 亿元` | `{ksm.get('status')}` | 需结合次日股价跌幅测算维保出清压力 |\n")
     
     # 看板 4
     md.append("### 4. 【期指博弈与到期交割日雷达】")
