@@ -27,6 +27,7 @@ from fetch_tech_volume import fetch_tech_volume_dashboard
 from fetch_cffex import fetch_cffex_dashboard
 from fetch_leverage_etf import fetch_leverage_etf_dashboard
 from fetch_market_sentiment import fetch_market_sentiment, calculate_divergence, generate_sentiment_label
+from fetch_fund_flow import fetch_fund_flow_dashboard, generate_fund_flow_markdown, get_key_stock_fund_flow_summary
 
 def generate_markdown_dashboard(data):
     """根据量化数据生成标准化 Markdown 仪表板表格"""
@@ -112,6 +113,11 @@ def generate_markdown_dashboard(data):
 
         md.append("\n")
 
+    # 自选股与科技龙头主力大单筹码雷达
+    fund_flow = data.get('fund_flow', {})
+    if fund_flow:
+        md.append(generate_fund_flow_markdown(fund_flow))
+
     # 看板 3
     md.append("### 3. 【两融杠杆水位与出清度看板】\n")
     md.append(f"> **法定披露时效提醒**：{margin.get('date_note', '交易所两融法定T+1日盘前披露，存在1个交易日时滞')}。推演时须严格分清持仓加减与当日现货走势的时序因果，严禁倒因为果。\n")
@@ -122,6 +128,16 @@ def generate_markdown_dashboard(data):
     md.append(f"| **融资余额 / 融券余额** | `{margin.get('trade_date')}` | `{margin.get('total_financing_yi')} 亿 / {margin.get('total_securities_lending_yi')} 亿` | - | 融券占比极低，主要由融资多头主导 |")
     ksm = leverage.get('key_stock_margin', {})
     md.append(f"| **重点标的: {ksm.get('stock_name')}({ksm.get('stock_code')})** | `{ksm.get('trade_date')}` | `{ksm.get('rzye_yi')} 亿元` | `{ksm.get('status')}` | 需结合次日股价跌幅测算维保出清压力 |\n")
+    
+    # 两融与机构主力大单双轨对冲验证
+    ksm_code = ksm.get('stock_code', '688012')
+    ff_summary = get_key_stock_fund_flow_summary(ksm_code, fund_flow.get('results', []))
+    if ff_summary:
+        ddx_val = ff_summary.get('ddx', 0.0)
+        flow_val = ff_summary.get('main_flow_yi', 0.0)
+        div_tag = ff_summary.get('divergence_tag', '')
+        f3d_val = ff_summary.get('flow_3d_yi', 0.0)
+        md.append(f"> 🔍 **两融与机构主力双轨对冲**：{ksm.get('stock_name')}(`{ksm_code}`) 今日主力净流向 `{flow_val:+.2f} 亿元`，大单净量 (DDX) 为 **`{ddx_val:+.3f}%`**（近3日累计 `{f3d_val:+.2f} 亿`，定性：{div_tag}）。与融资盘形成交叉验证。\n")
     
     # 看板 4
     md.append("### 4. 【期指博弈与到期交割日雷达】\n")
@@ -178,6 +194,9 @@ def main():
     sys.stderr.write("正在获取市场情绪数据...\n")
     sentiment = fetch_market_sentiment(args.date)
 
+    sys.stderr.write("正在获取主力大单净量与资金流向数据...\n")
+    fund_flow = fetch_fund_flow_dashboard(include_multiday=True)
+
     # 计算指数与个股分化度
     sys.stderr.write("正在计算指数分化度...\n")
     index_pct = tech.get('indices_detail', {}).get('000001', {}).get('pct_chg', 0.0)
@@ -198,6 +217,7 @@ def main():
         'cffex': cffex,
         'leverage_etf': leverage,
         'market_sentiment': sentiment,
+        'fund_flow': fund_flow,
         'divergence': divergence,
         'sentiment_label': sentiment_label
     }
