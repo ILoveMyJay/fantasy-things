@@ -64,5 +64,49 @@
       "status": "极限负乖离超卖",
       "action": "易触发强力均值回归反抽脉冲"
     }
+  },
+  "large_order_fund_flow_ddx": {
+    "definition": "DDX = (当日主力净流入 / 流通市值) * 100%",
+    "level2_order_size_breakdown": {
+      "super_large_order": "单笔 >= 100 万元 (机构战略建仓 / 国家队护盘 / 头部游资主力封单)",
+      "large_order": "单笔 20 万元 ~ 100 万元 (机构与大户主力常规交易)",
+      "medium_order": "单笔 4 万元 ~ 20 万元 (中户 / 散户大单博弈)",
+      "small_order": "单笔 < 4 万元 (散户跟风买入 / 散户恐慌踩踏抛售)"
+    },
+    "main_fund_flow_definition": "主力净流入 = 超大单净买入 + 大单净买入",
+    "divergence_tags": {
+      "bullish_accumulation": {
+        "condition": "涨幅 <= 0% 且 主力净流入 > 0.3亿 且 DDX > +0.03%",
+        "status": "🔥主力逆势吸筹(正背离)",
+        "meaning": "股价受大盘或散户恐慌拖累收阴，但机构主力逆势逢低抢筹，筹码快速向机构集中，后市反弹动能强劲"
+      },
+      "bearish_distribution": {
+        "condition": "涨幅 >= 1.5% 且 主力净流入 < -0.3亿 且 DDX < -0.03%",
+        "status": "⚠️主力诱多出货(负背离)",
+        "meaning": "拉高诱多掩护出货，散户跟风接盘，超大单/大单趁机高位套现派发，警惕次日破位杀跌"
+      },
+      "strong_resonance": {
+        "condition": "涨幅 > 0% 且 主力净流入 > 0.5亿 且 DDX >= +0.05%",
+        "status": "🚀量价齐升强共振",
+        "meaning": "股价上涨与主力大单主动推升高度共振，属于健康的真金白银主升浪进攻形态"
+      },
+      "panic_selloff": {
+        "condition": "涨幅 < -1.5% 且 主力净流入 < -0.5亿 且 DDX <= -0.05%",
+        "status": "📉多杀多主力出逃",
+        "meaning": "机构与大单不计成本踩踏砸盘离场，空头动能宣泄，严禁在出现企稳信号前左侧接飞刀"
+      },
+      "bottom_support": {
+        "condition": "涨幅 <= 0% 且 超大单净流入 > 0.5亿",
+        "status": "💎超大单暗中托底",
+        "meaning": "虽有散户与大单抛压，但百万元级别超大单在关键技术均线处坚决承接托盘"
+      }
+    },
+    "dual_track_cross_validation": {
+      "description": "两融杠杆（散户/中户杠杆追涨杀跌）与机构主力大单（机构中长线配置与套保）双轨对冲交叉验证矩阵",
+      "scenario_institutional_clearing_vs_margin_cut": "融资余额减少（去杠杆出清 Em > 1.0）+ 主力净流入大幅为正（DDX > +0.05%）：最优质做多共振！浮筹洗净且机构真金白银承接，反弹弹性极高",
+      "scenario_margin_trap_vs_institutional_sell": "融资余额逆势激增（散户死扛逆势加仓 Em < 0）+ 主力净流出大幅为负（DDX < -0.03%）：最高危踩踏走势！主力套现离场，散户杠杆套牢，次日开盘极易诱发维保强平踩踏",
+      "scenario_double_bull": "融资加仓 + 主力净流入持续为正：主升浪狂热推进，顺势而为，但需警惕 TCR 双创拥挤度是否触及 40% 预警线",
+      "scenario_double_bear": "融资偿还 + 主力净流出持续为负：泥沙俱下全面收缩，保持轻仓防守，等待地量缩量企稳信号"
+    }
   }
 }
