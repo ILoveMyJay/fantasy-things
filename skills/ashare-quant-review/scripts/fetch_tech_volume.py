@@ -3,13 +3,46 @@
 """
 fetch_tech_volume.py - 科技成长独立量能拆解与 TCR 拥挤度监控
 涵盖: 上证、深证、创业板综(399102)、科创综指(000680)、科创50、科创芯片(000685)的成交额、涨跌幅与拥挤度模型
+核心增强:
+1. 周末与非交易日严格防护: 识别 weekday() >= 5，周末强制标记为休市态，拒绝虚假外推。
+2. A股日内U型换手分时加权模型: 基于历史分时经验权重消除早盘开盘单纯线性折算的4万亿失真。
+3. 纯净错误输出: 诊断信息统一输出至 sys.stderr。
 """
 
 import urllib.request
 import json
+import sys
 from datetime import datetime, time
 
-def is_trading_time():
+# A股日内经验分时累计成交量分布权重模型 (Volume Profile Weights)
+# key: 已开盘分钟数 (0~240), value: 累计换手占全天的典型比例
+VOLUME_PROFILE = [
+    (0, 0.0),
+    (15, 0.16),
+    (30, 0.28),
+    (60, 0.42),
+    (90, 0.50),
+    (120, 0.58),
+    (150, 0.68),
+    (180, 0.78),
+    (210, 0.88),
+    (240, 1.00)
+]
+
+def get_cumulative_volume_weight(elapsed_minutes):
+    """根据已开盘分钟数进行分段线性插值计算权重"""
+    if elapsed_minutes <= 0:
+        return 0.001
+    if elapsed_minutes >= 240:
+        return 1.0
+    for i in range(len(VOLUME_PROFILE) - 1):
+        m1, w1 = VOLUME_PROFILE[i]
+        m2, w2 = VOLUME_PROFILE[i + 1]
+        if m1 <= elapsed_minutes <= m2:
+            return w1 + (w2 - w1) * ((elapsed_minutes - m1) / (m2 - m1))
+    return 1.0
+
+def is_trading_time(dt=None):
     """
     判断当前是否处于A股交易时段（盘中态）
 
@@ -24,23 +57,25 @@ def is_trading_time():
             - elapsed_minutes: int, 已开盘分钟数
             - session_phase: str, 'pre_market'/'morning'/'noon_break'/'afternoon'/'after_hours'
     """
-    now = datetime.now()
+    now = datetime.now() if dt is None else dt
+
+    # 1. 周末严格排查 (周六: 5, 周日: 6)
+    if now.weekday() >= 5:
+        return (False, 240, 'after_hours')
+
     current_time = now.time()
 
-    # 定义交易时段
     morning_start = time(9, 30)
     morning_end = time(11, 30)
     afternoon_start = time(13, 0)
     afternoon_end = time(15, 0)
-
-    elapsed_minutes = 0
 
     if current_time < morning_start:
         return (False, 0, 'pre_market')
     elif morning_start <= current_time < morning_end:
         # 上午盘中
         delta = datetime.combine(now.date(), current_time) - datetime.combine(now.date(), morning_start)
-        elapsed_minutes = int(delta.total_seconds() / 60)
+        elapsed_minutes = max(1, int(delta.total_seconds() / 60))
         return (True, elapsed_minutes, 'morning')
     elif morning_end <= current_time < afternoon_start:
         # 午间休市
@@ -48,8 +83,7 @@ def is_trading_time():
     elif afternoon_start <= current_time < afternoon_end:
         # 下午盘中
         delta = datetime.combine(now.date(), current_time) - datetime.combine(now.date(), afternoon_start)
-        afternoon_minutes = int(delta.total_seconds() / 60)
-        elapsed_minutes = 120 + afternoon_minutes
+        elapsed_minutes = 120 + int(delta.total_seconds() / 60)
         return (True, elapsed_minutes, 'afternoon')
     else:
         # 盘后
@@ -57,20 +91,16 @@ def is_trading_time():
 
 def estimate_full_day_volume(current_amount, elapsed_minutes, total_minutes=240):
     """
-    根据盘中已开盘分钟数估算全天成交额
-
-    参数:
-        current_amount: 当前累计成交额（亿元）
-        elapsed_minutes: 已开盘分钟数
-        total_minutes: 全天交易分钟数（默认240）
-
-    返回:
-        float: 预估全天成交额
+    根据A股日内流动性U型经验分布加权估算全天成交额
+    消除早盘开盘单纯线性除以已开盘分钟数产生的畸变
     """
     if elapsed_minutes <= 0:
         return current_amount
-    # 线性估算
-    estimated = current_amount / elapsed_minutes * total_minutes
+    if elapsed_minutes >= total_minutes:
+        return round(current_amount, 2)
+    
+    weight = get_cumulative_volume_weight(elapsed_minutes)
+    estimated = current_amount / weight
     return round(estimated, 2)
 
 def fetch_market_volume_delta():
@@ -98,7 +128,7 @@ def fetch_market_volume_delta():
                     'prev_total_market_amt': prev_total
                 }
     except Exception as e:
-        print(f"Error fetching prev volume: {e}")
+        sys.stderr.write(f"Warning: fetch_market_volume_delta: {e}\n")
     return None
 
 def fetch_tech_volume_dashboard():
@@ -130,17 +160,20 @@ def fetch_tech_volume_dashboard():
                         'amount_yi': round(amt_yi, 2)
                     }
     except Exception as e:
-        print(f"Error fetching tech volume: {e}")
+        sys.stderr.write(f"Warning: fetch_tech_volume quotes: {e}\n")
         
     sh_amt = indices.get('000001', {}).get('amount_yi', 7156.21)
     sz_amt = indices.get('399001', {}).get('amount_yi', 8409.03)
     total_market_amt = round(sh_amt + sz_amt, 2)
 
-    # 盘中态识别与量能估算
+    # 盘中态识别与分时加权量能估算
     is_intraday, elapsed_minutes, session_phase = is_trading_time()
     if is_intraday:
         estimated_full_day = estimate_full_day_volume(total_market_amt, elapsed_minutes)
-        volume_estimate_note = f"盘中态（已开盘{elapsed_minutes}分钟），当前{total_market_amt}亿元，预估全天{estimated_full_day}亿元"
+        if elapsed_minutes <= 15:
+            volume_estimate_note = f"开盘初期（开盘{elapsed_minutes}分钟），当前{total_market_amt}亿元，预估全天{estimated_full_day}亿元（早盘集中换手，估算波动较大）"
+        else:
+            volume_estimate_note = f"盘中态（开盘{elapsed_minutes}分钟/加权折算），当前{total_market_amt}亿元，预估全天{estimated_full_day}亿元"
     else:
         estimated_full_day = total_market_amt
         volume_estimate_note = f"盘后数据（{session_phase}），全天成交额{total_market_amt}亿元"
@@ -149,7 +182,6 @@ def fetch_tech_volume_dashboard():
     delta_info = fetch_market_volume_delta()
     if delta_info and delta_info.get('prev_total_market_amt'):
         prev_amt = delta_info['prev_total_market_amt']
-        # 盘中态使用预估值计算环比
         compare_amt = estimated_full_day if is_intraday else total_market_amt
         delta_amt = round(compare_amt - prev_amt, 2)
         delta_pct = round((delta_amt / prev_amt) * 100.0, 2)
@@ -161,10 +193,10 @@ def fetch_tech_volume_dashboard():
             volume_trend = "SHRINKING"
     else:
         prev_amt = 16284.88
-        delta_amt = -719.64
-        delta_pct = -4.42
-        volume_edge = "较前一交易日缩量 719.64 亿元 (-4.42%)"
-        volume_trend = "SHRINKING"
+        delta_amt = round(total_market_amt - prev_amt, 2)
+        delta_pct = round((delta_amt / prev_amt) * 100.0, 2)
+        volume_edge = f"较前一交易日{'放量 +' if delta_amt>0 else '缩量 '}{abs(delta_amt)} 亿元 ({delta_pct}%)"
+        volume_trend = "EXPANDING" if delta_amt > 0 else "SHRINKING"
     
     chinext_amt = indices.get('399102', {}).get('amount_yi', 4193.57) # 创业板综 (涵盖全板1300+股)
     star_amt = indices.get('000680', {}).get('amount_yi', 2279.40)    # 科创综指 (涵盖全板570+股)

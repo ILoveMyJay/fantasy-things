@@ -3,11 +3,16 @@
 """
 fetch_cffex.py - 中金所四大期指基差、年化贴水率与中信席位多空持仓监控
 涵盖: IF(沪深300), IC(中证500), IM(中证1000), IH(上证50)的当月基差、年化贴水率、距第三个周五交割日倒计时、中信期货(代客)多空持仓
+核心增强:
+1. 智能循环穿透法定非交易日: 真实探测合约持仓数据，跳过周末与长假，避免返回全0空数据。
+2. 明确指示业务基准日期: 标注 cffex_trade_date。
+3. 纯净错误输出: 诊断信息统一输出至 sys.stderr。
 """
 
 import urllib.request
 import datetime
 import json
+import sys
 import akshare as ak
 
 def get_front_contract_info(dt=None):
@@ -62,10 +67,9 @@ def fetch_cffex_basis():
                 k = line.split('="')[0].split('hq_str_CFF_RE_')[-1]
                 v = line.split('="')[1].split('";')[0].split(',')
                 if len(v) > 4:
-                    # v[3] 为最新现价
                     futures_data[k[:2]] = float(v[3])
     except Exception as e:
-        print(f"Error fetching futures quotes: {e}")
+        sys.stderr.write(f"Warning: fetch futures quotes: {e}\n")
         
     # 2. 获取现货指数行情
     try:
@@ -86,7 +90,7 @@ def fetch_cffex_basis():
                 elif 'sh000016' in line:
                     spot_data['IH'] = float(v[3])
     except Exception as e:
-        print(f"Error fetching spot quotes: {e}")
+        sys.stderr.write(f"Warning: fetch spot quotes: {e}\n")
 
     # 兜底默认值
     defaults_f = {'IF': 4010.4, 'IC': 6422.0, 'IM': 6354.0, 'IH': 2736.8}
@@ -117,26 +121,30 @@ def fetch_cffex_basis():
     }
 
 def fetch_citic_positions(trade_date=None):
-    """获取中信期货代客在四大期指全合约的持仓汇总"""
-    if trade_date is None:
-        # 回溯到最近交易日（跳过周末和节假日）
+    """获取中信期货代客在四大期指全合约的持仓汇总（智能回溯跳过非交易日）"""
+    actual_trade_date = trade_date
+    if actual_trade_date is None:
         today = datetime.date.today()
-        for i in range(1, 10):  # 最多回溯10天
+        # 最多向前探测 15 天跳过周末与法定节假日
+        for i in range(1, 15):
             candidate = today - datetime.timedelta(days=i)
-            # 周末跳过
-            if candidate.weekday() >= 5:  # 5=Saturday, 6=Sunday
+            if candidate.weekday() >= 5:
                 continue
-            # 尝试该日期，如果是非交易日akshare会警告但返回空数据
-            trade_date = candidate.strftime('%Y%m%d')
-            break
-        else:
-            # 兜底：使用T-1
-            trade_date = (today - datetime.timedelta(days=1)).strftime('%Y%m%d')
-        
+            cand_str = candidate.strftime('%Y%m%d')
+            try:
+                probe = ak.get_cffex_rank_table(date=cand_str, vars_list=['IF'])
+                if probe and any(df is not None and not df.empty for df in probe.values()):
+                    actual_trade_date = cand_str
+                    break
+            except Exception:
+                continue
+        if actual_trade_date is None:
+            actual_trade_date = (today - datetime.timedelta(days=1)).strftime('%Y%m%d')
+
     citic_res = {}
     for v in ['IF', 'IC', 'IM', 'IH']:
         try:
-            ranks = ak.get_cffex_rank_table(date=trade_date, vars_list=[v])
+            ranks = ak.get_cffex_rank_table(date=actual_trade_date, vars_list=[v])
             tot_long = 0
             tot_long_chg = 0
             tot_short = 0
@@ -164,22 +172,23 @@ def fetch_citic_positions(trade_date=None):
                 'net_short': tot_short - tot_long,
                 'net_short_chg': tot_short_chg - tot_long_chg
             }
-        except Exception:
-            # 异常兜底
+        except Exception as e:
+            sys.stderr.write(f"Warning: fetch cffex rank table {v} on {actual_trade_date}: {e}\n")
             citic_res[v] = {
                 'total_long': 0, 'long_chg': 0, 'total_short': 0, 'short_chg': 0, 'net_short': 0, 'net_short_chg': 0
             }
             
-    return citic_res
+    return citic_res, actual_trade_date
 
 def fetch_cffex_dashboard(trade_date=None):
     basis = fetch_cffex_basis()
-    citic = fetch_citic_positions(trade_date)
+    citic, actual_date = fetch_citic_positions(trade_date)
     return {
         **basis,
+        'cffex_trade_date': actual_date,
         'citic_positions': citic
     }
 
 if __name__ == '__main__':
-    res = fetch_cffex_dashboard('20261028')
+    res = fetch_cffex_dashboard()
     print(json.dumps(res, ensure_ascii=False, indent=2))

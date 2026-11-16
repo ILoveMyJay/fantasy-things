@@ -5,11 +5,10 @@ run_quant_suite.py - A股全维度量化复盘与七大看板总调度引擎
 整合:
 - 看板1: 外围宏观流动性与利差雷达
 - 看板2: 科技成长独立量能与拥挤度(TCR)
+- 看板2.1: 市场情绪与涨跌停结构
 - 看板3: 两融杠杆水位与出清度
 - 看板4: 期指博弈与到期交割日雷达
-- 看板5: 全球AI龙头财报与CAPEX映射指引
-- 看板6: 国家队宽基ETF托底看板
-- 看板7: 超卖与均值回归看板
+- 看板5: 国家队宽基ETF托底与全市场广度看板
 """
 
 import sys
@@ -36,7 +35,7 @@ def generate_markdown_dashboard(data):
     cffex = data.get('cffex', {})
     leverage = data.get('leverage_etf', {})
     sentiment = data.get('market_sentiment', {})
-
+    
     margin = leverage.get('margin_summary', {})
     breadth = leverage.get('market_breadth', {})
     etfs = leverage.get('national_team_etfs', {})
@@ -47,7 +46,7 @@ def generate_markdown_dashboard(data):
     md.append("## 📊 A股全维度量化复盘仪表板（Seven Quantitative Dashboards）\n")
     
     # 看板 1
-    md.append("### 1. 【外围宏观流动性与利差雷达】")
+    md.append("### 1. 【外围宏观流动性与利差雷达】\n")
     md.append("| 宏观指标 | 最新数值 | 历史基准与阈值 | 信号研判 |")
     md.append("| :--- | :--- | :--- | :--- |")
     md.append(f"| **10Y 美债收益率 (US10Y)** | `{macro.get('us_10y')}%` | 正常中枢 4.0%~4.5% | 高位压制长久期科技资产分母端估值 |")
@@ -57,8 +56,8 @@ def generate_markdown_dashboard(data):
     md.append(f"| **下次美联储 FOMC 决议** | `{macro.get('next_meeting_date')}` | 距今剩余 `{macro.get('days_remaining')}` 天 | {'含点阵图重磅指引' if macro.get('has_dot_plot') else '常规例行决议'} |\n")
     
     # 看板 2
-    md.append("### 2. 【科技成长独立量能与拥挤度看板】")
-    md.append(f"> **量能边际定性**：{tech.get('volume_edge_status', '常态交投')}。严格区分【绝对高位巨量】与【环比放量/缩量】。")
+    md.append("### 2. 【科技成长独立量能与拥挤度看板】\n")
+    md.append(f"> **量能边际定性**：{tech.get('volume_edge_status', '常态交投')}。严格区分【绝对高位巨量】与【环比放量/缩量】。\n")
     md.append("| 监测标的/指数 | 代码 | 真实成交额(亿元) | 涨跌幅 / 环比边际 | 拥挤度 TCR / 量能占比 | 状态诊断 |")
     md.append("| :--- | :---: | :---: | :---: | :---: | :--- |")
     md.append(f"| **沪深两市总成交额** | 全市场 | `{tech.get('total_market_amount_yi')}` | {tech.get('volume_edge_status')} | `100.0%` | {'绝对高位但边际缩量' if tech.get('volume_trend')=='SHRINKING' else '放量交投活跃'} |")
@@ -66,51 +65,56 @@ def generate_markdown_dashboard(data):
     md.append(f"| **科创综指 (全板570+股)** | `sh000680` | `{tech.get('star_all_amount_yi')}` | `{tech.get('indices_detail',{}).get('000680',{}).get('pct_chg')}%` | TCR `{tech.get('tcr_star')}%` | 涵盖科创板全市场 100% 真实量能 |")
     md.append(f"| *科创50 (仅50只龙头)* | `sh000688` | `{tech.get('star50_amount_yi')}` | `{tech.get('indices_detail',{}).get('000688',{}).get('pct_chg')}%` | 占比约 31% | 仅代表硬科技大市值龙头走势 |")
     md.append(f"| **科创芯片指数** | `sh000685` | `{tech.get('semi_amount_yi')}` | `{tech.get('indices_detail',{}).get('000685',{}).get('pct_chg')}%` | TCR `{tech.get('tcr_semi')}%` | 芯片核心赛道交投温度计 |")
-    md.append(f"| **双创总拥挤度 (TCR_DoubleTech)** | 创业+科创 | `{round(tech.get('chinext_all_amount_yi',0)+tech.get('star_all_amount_yi',0), 2)}` | - | **`{tech.get('tcr_double_tech')}%`** | **{tech.get('crowding_status')}** |")
-    md.append(f"> **双创统计口径说明**：上述为指数切片口径（合计 `{round(tech.get('chinext_all_amount_yi',0)+tech.get('star_all_amount_yi',0), 2)} 亿`，占比 `{tech.get('tcr_double_tech')}%`）；若按交易所全板块快报（加计盘后定价及大宗，约 `{tech.get('board_official_total_yi')} 亿`，占比 `{tech.get('tcr_double_tech_board')}%`），两口径均确认处于 >40% 极端过热预警区。")
+    md.append(f"| **双创总拥挤度 (TCR_DoubleTech)** | 创业+科创 | `{round(tech.get('chinext_all_amount_yi',0)+tech.get('star_all_amount_yi',0), 2)}` | - | **`{tech.get('tcr_double_tech')}%`** | **{tech.get('crowding_status')}** |\n")
+    md.append(f"> **双创统计口径说明**：上述为指数切片口径（合计 `{round(tech.get('chinext_all_amount_yi',0)+tech.get('star_all_amount_yi',0), 2)} 亿`，占比 `{tech.get('tcr_double_tech')}%`）；若按交易所全板块快报（加计盘后定价及大宗，约 `{tech.get('board_official_total_yi')} 亿`，占比 `{tech.get('tcr_double_tech_board')}%`），两口径均确认处于 >40% 极端过热预警区。\n")
 
     # 盘中态识别提示
     if tech.get('is_intraday_estimate'):
-        md.append(f"> ⚠️  **盘中态提醒**：{tech.get('volume_estimate_note')}。环比量能为预估值，仅供参考。\n")
-    else:
-        md.append("")
+        md.append(f"> ⚠️  **盘中态量能折算**：{tech.get('volume_estimate_note')}。\n")
 
-    # 新增：看板 2.5 市场情绪与涨跌停结构
+    # 看板 2.1: 市场情绪与微观结构
     if sentiment:
-        md.append("#### 2.1 【市场情绪与涨跌停结构】")
-        market_breadth = sentiment.get('market_breadth', {})
-        limit_structure = sentiment.get('limit_structure', {})
+        md.append("#### 2.1 【市场情绪与涨跌停结构】\n")
+        mb = sentiment.get('market_breadth', {})
+        ls = sentiment.get('limit_structure', {})
 
-        md.append("**市场宽度指标**：")
-        md.append(f"- 上涨家数：`{market_breadth.get('up_count')}` 只（{market_breadth.get('advance_pct')}%）")
-        md.append(f"- 下跌家数：`{market_breadth.get('down_count')}` 只（{market_breadth.get('decline_pct')}%）")
-        md.append(f"- 涨跌比：`{market_breadth.get('advance_decline_ratio')}`")
-        md.append(f"- 个股中位数涨跌幅：`{market_breadth.get('median_change_pct')}%`")
+        md.append("**市场宽度指标（全市场覆盖）**：")
+        md.append(f"- 上涨家数：`{mb.get('up_count')}` 只（{mb.get('advance_pct')}%）")
+        md.append(f"- 下跌家数：`{mb.get('down_count')}` 只（{mb.get('decline_pct')}%）")
+        md.append(f"- 平盘家数：`{mb.get('flat_count')}` 只")
+        md.append(f"- 涨跌比：`{mb.get('advance_decline_ratio')}`")
+        md.append(f"- 个股中位数涨跌幅：`{mb.get('median_change_pct')}%`")
 
         md.append("\n**涨跌停结构（2026年新规口径）**：")
-        md.append(f"- 涨停家数：`{limit_structure.get('limit_up_count')}` 只（封板 {limit_structure.get('sealed_limit_up_count')}，炸板 {limit_structure.get('broken_board_count')}）")
-        md.append(f"- 封板率：`{limit_structure.get('seal_rate')}%`，炸板率：`{limit_structure.get('broken_board_rate')}%`")
-        md.append(f"- 跌停家数：`{limit_structure.get('limit_down_count')}` 只")
+        md.append(f"- 封死涨停：`{ls.get('sealed_limit_up_count', ls.get('limit_up_count'))}` 只（盘中炸板 {ls.get('broken_board_count')} 只）")
+        md.append(f"- 封板率：`{ls.get('seal_rate')}%`，炸板率：`{ls.get('broken_board_rate')}%`")
+        md.append(f"- 跌停家数：`{ls.get('limit_down_count')}` 只")
+
+        cb = ls.get('consecutive_boards', {})
+        if cb:
+            cb_str = "、".join([f"{k}连板 {v} 家" for k, v in sorted(cb.items(), reverse=True)])
+            md.append(f"- 连板梯队：`{cb_str}`")
 
         # 指数与个股分化
-        if 'divergence' in data and data['divergence']:
-            div = data['divergence']
+        div = data.get('divergence')
+        if div:
             md.append(f"\n**指数与个股分化度**：")
-            md.append(f"- 分化值：`{div.get('divergence_value')}%`")
+            md.append(f"- 剪刀差值：`{div.get('divergence_value')}%`")
             md.append(f"- 结构特征：**{div.get('description')}**")
 
         # 情绪标签
-        if 'sentiment_label' in data and data['sentiment_label']:
-            sl = data['sentiment_label']
+        sl = data.get('sentiment_label')
+        if sl:
             md.append(f"\n**综合情绪评估**：")
-            md.append(f"- 情绪等级：**{sl.get('sentiment_level')}**（评分：{sl.get('sentiment_score')}）")
-            md.append(f"- 驱动因素：{', '.join(sl.get('drivers', []))}")
+            md.append(f"- 情绪等级：**{sl.get('sentiment_level')}**（评分：`{sl.get('sentiment_score')}`）")
+            if sl.get('drivers'):
+                md.append(f"- 驱动因素：{', '.join(sl.get('drivers'))}")
 
-        md.append("")
+        md.append("\n")
 
     # 看板 3
-    md.append("### 3. 【两融杠杆水位与出清度看板】")
-    md.append(f"> **法定披露时效提醒**：{margin.get('date_note', '交易所两融法定T+1日盘前披露，存在1个交易日时滞')}。推演时须严格分清持仓加减与当日现货走势的时序因果，严禁倒因为果。")
+    md.append("### 3. 【两融杠杆水位与出清度看板】\n")
+    md.append(f"> **法定披露时效提醒**：{margin.get('date_note', '交易所两融法定T+1日盘前披露，存在1个交易日时滞')}。推演时须严格分清持仓加减与当日现货走势的时序因果，严禁倒因为果。\n")
     md.append("| 两融监测项 | 业务基准日期 | 最新数据 | 单日变动 | 预警基准与出清评估 |")
     md.append("| :--- | :---: | :---: | :---: | :--- |")
     chg_sign = "+" if margin.get('margin_change_yi', 0) >= 0 else ""
@@ -120,8 +124,8 @@ def generate_markdown_dashboard(data):
     md.append(f"| **重点标的: {ksm.get('stock_name')}({ksm.get('stock_code')})** | `{ksm.get('trade_date')}` | `{ksm.get('rzye_yi')} 亿元` | `{ksm.get('status')}` | 需结合次日股价跌幅测算维保出清压力 |\n")
     
     # 看板 4
-    md.append("### 4. 【期指博弈与到期交割日雷达】")
-    md.append(f"> **到期交割日提醒**：当前主力为 `{cffex.get('front_contract_suffix')}` 合约，距 **{cffex.get('expiry_date')}**（每月第三个周五交割日）剩余 **`{cffex.get('days_to_expiry')}`** 个自然日。中金所结算价按最后两小时 120 个切片算术平均防操纵。")
+    md.append("### 4. 【期指博弈与到期交割日雷达】\n")
+    md.append(f"> **到期交割日提醒**：当前主力为 `{cffex.get('front_contract_suffix')}` 合约，距 **{cffex.get('expiry_date')}**（每月第三个周五交割日）剩余 **`{cffex.get('days_to_expiry')}`** 个自然日。中金所结算价按最后两小时 120 个切片算术平均防操纵。\n")
     md.append("| 期指品种 | 当月合约 | 期货价 | 现货价 | 基差 (Basis) | 年化贴水率 | 极端反转预警 |")
     md.append("| :---: | :---: | :---: | :---: | :---: | :---: | :---: |")
     for k, name in [('IF','沪深300'), ('IC','中证500'), ('IM','中证1000'), ('IH','上证50')]:
@@ -129,18 +133,22 @@ def generate_markdown_dashboard(data):
         sig = "🔥 <=-25% 极限恐慌超卖做多点" if row.get('is_extreme_oversold_signal') else "正常套保贴水"
         md.append(f"| **{k} ({name})** | `{row.get('contract')}` | `{row.get('futures_price')}` | `{row.get('spot_price')}` | `{row.get('basis')}` | `{row.get('annualized_discount_rate')}%` | {sig} |")
     
-    md.append("\n**头部席位持仓微观拆解 (中信期货代客)**：")
+    cffex_date_note = f"（席位基准日: {cffex.get('cffex_trade_date')}）" if cffex.get('cffex_trade_date') else ""
+    md.append(f"\n**头部席位持仓微观拆解 (中信期货代客{cffex_date_note})**：\n")
     md.append("| 标的 | 中信多单总量(手) | 单日增减 | 中信空单总量(手) | 单日增减 | 中信净空单(手) | 净空单变动 | 微观定性 |")
     md.append("| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |")
     for k in ['IF', 'IC', 'IM', 'IH']:
         c = citic.get(k, {})
         nature = "现货减仓被动平保" if c.get('net_short_chg', 0) < 0 else "现货加仓中性对冲"
         md.append(f"| **{k}** | `{c.get('total_long')}` | `{c.get('long_chg'):+d}` | `{c.get('total_short')}` | `{c.get('short_chg'):+d}` | `{c.get('net_short')}` | `{c.get('net_short_chg'):+d}` | {nature} |")
-    md.append("")
+    md.append("\n")
     
-    # 看板 6 & 7
-    md.append("### 5. 【国家队宽基 ETF 托底与全市场超卖看板】")
-    md.append(f"全市场广度：**上涨 `{breadth.get('up_count')}` 家 / 下跌 `{breadth.get('down_count')}` 家 / 平盘 `{breadth.get('flat_count')}` 家**（当前盘面特征：**{breadth.get('sentiment')}**）。")
+    # 看板 5
+    md.append("### 5. 【国家队宽基 ETF 托底与全市场超卖看板】\n")
+    # 统一使用情绪模块的全市场广度数据
+    active_breadth = sentiment.get('market_breadth') if sentiment and sentiment.get('market_breadth') else breadth
+    sentiment_desc = "普跌情绪出清" if active_breadth.get('down_count', 0) > active_breadth.get('up_count', 0) * 2 else ("普涨做多" if active_breadth.get('up_count', 0) > active_breadth.get('down_count', 0) * 2 else "分化震荡")
+    md.append(f"全市场广度：**上涨 `{active_breadth.get('up_count')}` 家 / 下跌 `{active_breadth.get('down_count')}` 家 / 平盘 `{active_breadth.get('flat_count')}` 家**（当前盘面特征：**{sentiment_desc}**）。\n")
     md.append("| 核心宽基 ETF | 代码 | 收盘价 | 涨跌幅 | 单日成交额(亿元) | 托底指纹识别 |")
     md.append("| :--- | :---: | :---: | :---: | :---: | :--- |")
     for code, row in etfs.items():
@@ -155,25 +163,25 @@ def main():
     parser.add_argument('--format', type=str, choices=['json', 'markdown', 'all'], default='all', help="输出格式")
     args = parser.parse_args()
 
-    print("正在获取宏观数据...", file=sys.stderr)
+    sys.stderr.write("正在获取宏观数据...\n")
     macro = fetch_macro_dashboard()
 
-    print("正在获取量能数据...", file=sys.stderr)
+    sys.stderr.write("正在获取量能数据...\n")
     tech = fetch_tech_volume_dashboard()
 
-    print("正在获取期指数据...", file=sys.stderr)
+    sys.stderr.write("正在获取期指数据...\n")
     cffex = fetch_cffex_dashboard(args.date)
 
-    print("正在获取两融与ETF数据...", file=sys.stderr)
+    sys.stderr.write("正在获取两融与ETF数据...\n")
     leverage = fetch_leverage_etf_dashboard()
 
-    print("正在获取市场情绪数据...", file=sys.stderr)
-    sentiment = fetch_market_sentiment()
+    sys.stderr.write("正在获取市场情绪数据...\n")
+    sentiment = fetch_market_sentiment(args.date)
 
     # 计算指数与个股分化度
-    print("正在计算指数分化度...", file=sys.stderr)
-    index_pct = tech.get('indices_detail', {}).get('000001', {}).get('pct_chg', 0)
-    median_pct = sentiment.get('market_breadth', {}).get('median_change_pct', 0)
+    sys.stderr.write("正在计算指数分化度...\n")
+    index_pct = tech.get('indices_detail', {}).get('000001', {}).get('pct_chg', 0.0)
+    median_pct = sentiment.get('market_breadth', {}).get('median_change_pct', 0.0)
     divergence = calculate_divergence(index_pct, median_pct)
 
     # 生成情绪标签
@@ -194,7 +202,7 @@ def main():
         'sentiment_label': sentiment_label
     }
 
-    print("数据获取完成，生成报告...\n", file=sys.stderr)
+    sys.stderr.write("数据获取完成，生成报告...\n\n")
 
     if args.format == 'json':
         print(json.dumps(full_data, ensure_ascii=False, indent=2))

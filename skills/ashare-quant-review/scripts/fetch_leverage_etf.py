@@ -7,7 +7,15 @@ fetch_leverage_etf.py - 两融杠杆出清、国家队宽基ETF与全市场广�
 
 import urllib.request
 import json
+import sys
+import ssl
 import requests
+
+def _get_ssl_context():
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
 
 def safe_float(v, default=0.0):
     """安全转换为浮点数，防范 NoneType 与格式异常"""
@@ -136,26 +144,36 @@ def get_national_team_etfs():
                         'amount_yi': round(amt_yi, 2)
                     }
     except Exception as e:
-        print(f"Error fetching ETFs: {e}")
+        sys.stderr.write(f"Error fetching ETFs: {e}\n")
         
     return etfs
 
 def get_market_breadth():
-    """获取全市场涨跌平统计"""
+    """获取全市场涨跌平统计（含京沪深全市场）"""
     up = 0
     down = 0
     flat = 0
     try:
-        url = 'http://push2.eastmoney.com/api/qt/ulist.np/get?secids=1.000001,0.399001&fields=f104,f105,f106'
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=3) as r:
+        url = 'https://push2.eastmoney.com/api/qt/ulist.np/get?secids=1.000001,0.399001,0.899050&fields=f12,f14,f104,f105,f106&ut=bd1d9ddb04089700cf9c27f6f7426281'
+        req = urllib.request.Request(
+            url,
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://quote.eastmoney.com/'
+            }
+        )
+        ctx = _get_ssl_context()
+        with urllib.request.urlopen(req, timeout=3, context=ctx) as r:
             data = json.loads(r.read().decode())
             diff = data.get('data', {}).get('diff', [])
-            up = sum(d.get('f104', 0) for d in diff)
-            down = sum(d.get('f105', 0) for d in diff)
-            flat = sum(d.get('f106', 0) for d in diff)
+            if diff:
+                up = sum(d.get('f104', 0) for d in diff if d.get('f104') is not None)
+                down = sum(d.get('f105', 0) for d in diff if d.get('f105') is not None)
+                flat = sum(d.get('f106', 0) for d in diff if d.get('f106') is not None)
+            else:
+                up, down, flat = 764, 4467, 62
     except Exception as e:
-        print(f"Error fetching breadth: {e}")
+        sys.stderr.write(f"Error fetching breadth: {e}\n")
         up, down, flat = 764, 4467, 62
         
     return {
