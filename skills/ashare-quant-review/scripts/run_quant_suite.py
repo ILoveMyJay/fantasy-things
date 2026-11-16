@@ -27,6 +27,7 @@ from fetch_macro import fetch_macro_dashboard
 from fetch_tech_volume import fetch_tech_volume_dashboard
 from fetch_cffex import fetch_cffex_dashboard
 from fetch_leverage_etf import fetch_leverage_etf_dashboard
+from fetch_market_sentiment import fetch_market_sentiment, calculate_divergence, generate_sentiment_label
 
 def generate_markdown_dashboard(data):
     """根据量化数据生成标准化 Markdown 仪表板表格"""
@@ -34,7 +35,8 @@ def generate_markdown_dashboard(data):
     tech = data.get('tech_volume', {})
     cffex = data.get('cffex', {})
     leverage = data.get('leverage_etf', {})
-    
+    sentiment = data.get('market_sentiment', {})
+
     margin = leverage.get('margin_summary', {})
     breadth = leverage.get('market_breadth', {})
     etfs = leverage.get('national_team_etfs', {})
@@ -65,8 +67,47 @@ def generate_markdown_dashboard(data):
     md.append(f"| *科创50 (仅50只龙头)* | `sh000688` | `{tech.get('star50_amount_yi')}` | `{tech.get('indices_detail',{}).get('000688',{}).get('pct_chg')}%` | 占比约 31% | 仅代表硬科技大市值龙头走势 |")
     md.append(f"| **科创芯片指数** | `sh000685` | `{tech.get('semi_amount_yi')}` | `{tech.get('indices_detail',{}).get('000685',{}).get('pct_chg')}%` | TCR `{tech.get('tcr_semi')}%` | 芯片核心赛道交投温度计 |")
     md.append(f"| **双创总拥挤度 (TCR_DoubleTech)** | 创业+科创 | `{round(tech.get('chinext_all_amount_yi',0)+tech.get('star_all_amount_yi',0), 2)}` | - | **`{tech.get('tcr_double_tech')}%`** | **{tech.get('crowding_status')}** |")
-    md.append(f"> **双创统计口径说明**：上述为指数切片口径（合计 `{round(tech.get('chinext_all_amount_yi',0)+tech.get('star_all_amount_yi',0), 2)} 亿`，占比 `{tech.get('tcr_double_tech')}%`）；若按交易所全板块快报（加计盘后定价及大宗，约 `{tech.get('board_official_total_yi')} 亿`，占比 `{tech.get('tcr_double_tech_board')}%`），两口径均确认处于 >40% 极端过热预警区。\n")
-    
+    md.append(f"> **双创统计口径说明**：上述为指数切片口径（合计 `{round(tech.get('chinext_all_amount_yi',0)+tech.get('star_all_amount_yi',0), 2)} 亿`，占比 `{tech.get('tcr_double_tech')}%`）；若按交易所全板块快报（加计盘后定价及大宗，约 `{tech.get('board_official_total_yi')} 亿`，占比 `{tech.get('tcr_double_tech_board')}%`），两口径均确认处于 >40% 极端过热预警区。")
+
+    # 盘中态识别提示
+    if tech.get('is_intraday_estimate'):
+        md.append(f"> ⚠️  **盘中态提醒**：{tech.get('volume_estimate_note')}。环比量能为预估值，仅供参考。\n")
+    else:
+        md.append("")
+
+    # 新增：看板 2.5 市场情绪与涨跌停结构
+    if sentiment:
+        md.append("#### 2.1 【市场情绪与涨跌停结构】")
+        market_breadth = sentiment.get('market_breadth', {})
+        limit_structure = sentiment.get('limit_structure', {})
+
+        md.append("**市场宽度指标**：")
+        md.append(f"- 上涨家数：`{market_breadth.get('up_count')}` 只（{market_breadth.get('advance_pct')}%）")
+        md.append(f"- 下跌家数：`{market_breadth.get('down_count')}` 只（{market_breadth.get('decline_pct')}%）")
+        md.append(f"- 涨跌比：`{market_breadth.get('advance_decline_ratio')}`")
+        md.append(f"- 个股中位数涨跌幅：`{market_breadth.get('median_change_pct')}%`")
+
+        md.append("\n**涨跌停结构（2026年新规口径）**：")
+        md.append(f"- 涨停家数：`{limit_structure.get('limit_up_count')}` 只（封板 {limit_structure.get('sealed_limit_up_count')}，炸板 {limit_structure.get('broken_board_count')}）")
+        md.append(f"- 封板率：`{limit_structure.get('seal_rate')}%`，炸板率：`{limit_structure.get('broken_board_rate')}%`")
+        md.append(f"- 跌停家数：`{limit_structure.get('limit_down_count')}` 只")
+
+        # 指数与个股分化
+        if 'divergence' in data and data['divergence']:
+            div = data['divergence']
+            md.append(f"\n**指数与个股分化度**：")
+            md.append(f"- 分化值：`{div.get('divergence_value')}%`")
+            md.append(f"- 结构特征：**{div.get('description')}**")
+
+        # 情绪标签
+        if 'sentiment_label' in data and data['sentiment_label']:
+            sl = data['sentiment_label']
+            md.append(f"\n**综合情绪评估**：")
+            md.append(f"- 情绪等级：**{sl.get('sentiment_level')}**（评分：{sl.get('sentiment_score')}）")
+            md.append(f"- 驱动因素：{', '.join(sl.get('drivers', []))}")
+
+        md.append("")
+
     # 看板 3
     md.append("### 3. 【两融杠杆水位与出清度看板】")
     md.append(f"> **法定披露时效提醒**：{margin.get('date_note', '交易所两融法定T+1日盘前披露，存在1个交易日时滞')}。推演时须严格分清持仓加减与当日现货走势的时序因果，严禁倒因为果。")
@@ -113,20 +154,48 @@ def main():
     parser.add_argument('--date', type=str, default=None, help="指定交易日期(YYYYMMDD)")
     parser.add_argument('--format', type=str, choices=['json', 'markdown', 'all'], default='all', help="输出格式")
     args = parser.parse_args()
-    
+
+    print("正在获取宏观数据...", file=sys.stderr)
     macro = fetch_macro_dashboard()
+
+    print("正在获取量能数据...", file=sys.stderr)
     tech = fetch_tech_volume_dashboard()
+
+    print("正在获取期指数据...", file=sys.stderr)
     cffex = fetch_cffex_dashboard(args.date)
+
+    print("正在获取两融与ETF数据...", file=sys.stderr)
     leverage = fetch_leverage_etf_dashboard()
-    
+
+    print("正在获取市场情绪数据...", file=sys.stderr)
+    sentiment = fetch_market_sentiment()
+
+    # 计算指数与个股分化度
+    print("正在计算指数分化度...", file=sys.stderr)
+    index_pct = tech.get('indices_detail', {}).get('000001', {}).get('pct_chg', 0)
+    median_pct = sentiment.get('market_breadth', {}).get('median_change_pct', 0)
+    divergence = calculate_divergence(index_pct, median_pct)
+
+    # 生成情绪标签
+    sentiment_label = generate_sentiment_label(
+        sentiment.get('market_breadth', {}),
+        sentiment.get('limit_structure', {}),
+        divergence
+    )
+
     full_data = {
         'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'macro': macro,
         'tech_volume': tech,
         'cffex': cffex,
-        'leverage_etf': leverage
+        'leverage_etf': leverage,
+        'market_sentiment': sentiment,
+        'divergence': divergence,
+        'sentiment_label': sentiment_label
     }
-    
+
+    print("数据获取完成，生成报告...\n", file=sys.stderr)
+
     if args.format == 'json':
         print(json.dumps(full_data, ensure_ascii=False, indent=2))
     elif args.format == 'markdown':

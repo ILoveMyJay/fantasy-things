@@ -119,7 +119,19 @@ def fetch_cffex_basis():
 def fetch_citic_positions(trade_date=None):
     """获取中信期货代客在四大期指全合约的持仓汇总"""
     if trade_date is None:
-        trade_date = (datetime.date.today() - datetime.timedelta(days=1)).strftime('%Y%m%d')
+        # 回溯到最近交易日（跳过周末和节假日）
+        today = datetime.date.today()
+        for i in range(1, 10):  # 最多回溯10天
+            candidate = today - datetime.timedelta(days=i)
+            # 周末跳过
+            if candidate.weekday() >= 5:  # 5=Saturday, 6=Sunday
+                continue
+            # 尝试该日期，如果是非交易日akshare会警告但返回空数据
+            trade_date = candidate.strftime('%Y%m%d')
+            break
+        else:
+            # 兜底：使用T-1
+            trade_date = (today - datetime.timedelta(days=1)).strftime('%Y%m%d')
         
     citic_res = {}
     for v in ['IF', 'IC', 'IM', 'IH']:

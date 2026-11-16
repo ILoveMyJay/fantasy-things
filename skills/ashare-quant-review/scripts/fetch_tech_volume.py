@@ -7,6 +7,71 @@ fetch_tech_volume.py - 科技成长独立量能拆解与 TCR 拥挤度监控
 
 import urllib.request
 import json
+from datetime import datetime, time
+
+def is_trading_time():
+    """
+    判断当前是否处于A股交易时段（盘中态）
+
+    交易时段:
+        上午: 09:30-11:30 (120分钟)
+        下午: 13:00-15:00 (120分钟)
+        全天: 240分钟
+
+    返回:
+        tuple: (is_intraday, elapsed_minutes, session_phase)
+            - is_intraday: bool, 是否盘中
+            - elapsed_minutes: int, 已开盘分钟数
+            - session_phase: str, 'pre_market'/'morning'/'noon_break'/'afternoon'/'after_hours'
+    """
+    now = datetime.now()
+    current_time = now.time()
+
+    # 定义交易时段
+    morning_start = time(9, 30)
+    morning_end = time(11, 30)
+    afternoon_start = time(13, 0)
+    afternoon_end = time(15, 0)
+
+    elapsed_minutes = 0
+
+    if current_time < morning_start:
+        return (False, 0, 'pre_market')
+    elif morning_start <= current_time < morning_end:
+        # 上午盘中
+        delta = datetime.combine(now.date(), current_time) - datetime.combine(now.date(), morning_start)
+        elapsed_minutes = int(delta.total_seconds() / 60)
+        return (True, elapsed_minutes, 'morning')
+    elif morning_end <= current_time < afternoon_start:
+        # 午间休市
+        return (False, 120, 'noon_break')
+    elif afternoon_start <= current_time < afternoon_end:
+        # 下午盘中
+        delta = datetime.combine(now.date(), current_time) - datetime.combine(now.date(), afternoon_start)
+        afternoon_minutes = int(delta.total_seconds() / 60)
+        elapsed_minutes = 120 + afternoon_minutes
+        return (True, elapsed_minutes, 'afternoon')
+    else:
+        # 盘后
+        return (False, 240, 'after_hours')
+
+def estimate_full_day_volume(current_amount, elapsed_minutes, total_minutes=240):
+    """
+    根据盘中已开盘分钟数估算全天成交额
+
+    参数:
+        current_amount: 当前累计成交额（亿元）
+        elapsed_minutes: 已开盘分钟数
+        total_minutes: 全天交易分钟数（默认240）
+
+    返回:
+        float: 预估全天成交额
+    """
+    if elapsed_minutes <= 0:
+        return current_amount
+    # 线性估算
+    estimated = current_amount / elapsed_minutes * total_minutes
+    return round(estimated, 2)
 
 def fetch_market_volume_delta():
     """
@@ -70,18 +135,29 @@ def fetch_tech_volume_dashboard():
     sh_amt = indices.get('000001', {}).get('amount_yi', 7156.21)
     sz_amt = indices.get('399001', {}).get('amount_yi', 8409.03)
     total_market_amt = round(sh_amt + sz_amt, 2)
-    
+
+    # 盘中态识别与量能估算
+    is_intraday, elapsed_minutes, session_phase = is_trading_time()
+    if is_intraday:
+        estimated_full_day = estimate_full_day_volume(total_market_amt, elapsed_minutes)
+        volume_estimate_note = f"盘中态（已开盘{elapsed_minutes}分钟），当前{total_market_amt}亿元，预估全天{estimated_full_day}亿元"
+    else:
+        estimated_full_day = total_market_amt
+        volume_estimate_note = f"盘后数据（{session_phase}），全天成交额{total_market_amt}亿元"
+
     # 获取历史环比成交额
     delta_info = fetch_market_volume_delta()
     if delta_info and delta_info.get('prev_total_market_amt'):
         prev_amt = delta_info['prev_total_market_amt']
-        delta_amt = round(total_market_amt - prev_amt, 2)
+        # 盘中态使用预估值计算环比
+        compare_amt = estimated_full_day if is_intraday else total_market_amt
+        delta_amt = round(compare_amt - prev_amt, 2)
         delta_pct = round((delta_amt / prev_amt) * 100.0, 2)
         if delta_amt > 0:
-            volume_edge = f"较前一交易日放量 +{delta_amt} 亿元 (+{delta_pct}%)"
+            volume_edge = f"{'预估' if is_intraday else ''}较前一交易日放量 +{delta_amt} 亿元 (+{delta_pct}%)"
             volume_trend = "EXPANDING"
         else:
-            volume_edge = f"较前一交易日缩量 {abs(delta_amt)} 亿元 ({delta_pct}%)"
+            volume_edge = f"{'预估' if is_intraday else ''}较前一交易日缩量 {abs(delta_amt)} 亿元 ({delta_pct}%)"
             volume_trend = "SHRINKING"
     else:
         prev_amt = 16284.88
@@ -117,6 +193,11 @@ def fetch_tech_volume_dashboard():
         
     return {
         'total_market_amount_yi': total_market_amt,
+        'estimated_full_day_yi': estimated_full_day,
+        'is_intraday_estimate': is_intraday,
+        'session_phase': session_phase,
+        'elapsed_trading_minutes': elapsed_minutes,
+        'volume_estimate_note': volume_estimate_note,
         'sh_amount_yi': sh_amt,
         'sz_amount_yi': sz_amt,
         'prev_market_amount_yi': prev_amt,
