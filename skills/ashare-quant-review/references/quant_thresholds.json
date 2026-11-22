@@ -1,21 +1,54 @@
 {
-  "description": "A股量化复盘与科技成长七大看板量化阈值与决策规则表",
+  "description": "A股量化复盘与科技成长七大看板量化阈值与决策规则表（已补全TCR 33-40%缝隙与VR20阈值）",
   "tech_crowding_ratio_tcr": {
     "definition": "TCR_DoubleTech = (创业板全板综指成交额 + 科创板全板综指成交额) / 沪深两市总成交额",
     "extreme_froth": {
       "condition": "TCR_DoubleTech > 40.0%",
       "status": "极端过热与资金虹吸",
+      "level": "HIGH_ALERT",
       "action": "若伴随放量滞涨（成交放大但涨幅<0.5%），触发科技成长减仓防守，谨防盛极而衰分歧出货"
+    },
+    "structural_divergence": {
+      "condition": "33.0% < TCR_DoubleTech <= 40.0%",
+      "status": "结构分歧警戒区",
+      "level": "CAUTION",
+      "action": "主线成长加速分化，只持有核心龙头，防范后排跟风退潮"
     },
     "healthy": {
       "condition": "25.0% <= TCR_DoubleTech <= 33.0%",
       "status": "健康活跃与良性换手",
+      "level": "HEALTHY",
       "action": "成长风格处于正常上升主升浪或健康震荡，维持多头持仓"
+    },
+    "cool_down": {
+      "condition": "20.0% <= TCR_DoubleTech < 25.0%",
+      "status": "风格降温与资金轮出",
+      "level": "COOLING",
+      "action": "双创板块交投降温，资金向蓝筹红利切换，降低成长仓位"
     },
     "freezing_point": {
       "condition": "TCR_DoubleTech < 20.0%",
       "status": "情绪冰点与极度缩量",
+      "level": "FREEZING_OPPORTUNITY",
       "action": "双创板块交投冰点，若跌至重要均线缩量止跌，构成左侧战略性建仓布局区间"
+    }
+  },
+  "volume_ratio_vr20": {
+    "definition": "VR20 = (sum(V_up) + 0.5*sum(V_flat)) / (sum(V_down) + 0.5*sum(V_flat)) * 100，其中V_up/V_down/V_flat分别为20个交易日中上涨日/下跌日/平盘日的成交额",
+    "oversold": {
+      "condition": "VR20 < 70",
+      "status": "中线超卖低吸区",
+      "action": "下跌日成交远大于上涨日，空方力量衰竭迹象，构成中线左侧布局窗口"
+    },
+    "balanced": {
+      "condition": "70 <= VR20 <= 250",
+      "status": "常态均衡量能区间",
+      "action": "多空双方力量相对均衡，遵循趋势操作"
+    },
+    "overheated": {
+      "condition": "VR20 > 250",
+      "status": "中线极度过热出货区",
+      "action": "上涨日成交远大于下跌日，多方力量过度宣泄，警惕中线见顶出货风险"
     }
   },
   "cffex_basis_discount": {
@@ -36,16 +69,11 @@
       "action": "关注移仓换月基差损耗与交割日下午13:30~14:30套利平仓脉冲"
     }
   },
-  "volume_ratio_vr20": {
-    "definition": "VR20 = 当日全市场成交额 / 20日均成交额",
-    "freezing_volume": { "condition": "VR20 < 0.70", "status": "极度地量，接近变盘拐点" },
-    "balanced": { "condition": "0.90 <= VR20 <= 1.25", "status": "常态均衡量能" },
-    "froth_volume": { "condition": "VR20 > 1.50", "status": "天量过热，需谨防巨量见顶" }
-  },
   "margin_clearing_em": {
-    "definition": "Em = (-融资余额降幅%) / (-股价跌幅%)",
+    "definition": "Em = ΔMargin%_5d / ΔIndex%_5d（5日融资余额变动百分比 / 5日指数变动百分比）",
     "t_minus_1_lag_rule": "两融数据法定T+1早间披露。盘前若显示T-1日净加仓，而T日现货暴跌，则该批资金已陷入深度被动浮亏，T+1日早盘09:30~10:00构成维保平仓的高危出清窗口。",
-    "thoroughly_cleared": { "condition": "Em > 1.0", "status": "杠杆资金充分出清，浮筹清洗干净，反弹阻力极小" },
+    "thoroughly_cleared": { "condition": "Em > 1.2", "status": "杠杆资金充分出清，浮筹清洗干净，反弹阻力极小" },
+    "partial_clear": { "condition": "0.7 < Em <= 1.2", "status": "部分出清，抛压减缓但仍有存量套牢盘" },
     "trapped_holding": { "condition": "0 <= Em <= 0.7", "status": "死扛套牢区，融资客拒绝止损，上方抛压沉重" },
     "reverse_adding_danger": { "condition": "Em < 0", "status": "逆势加仓高危区，跌幅加深易引发强平踩踏" }
   },
@@ -63,6 +91,43 @@
       "condition": "BIAS5 <= -2.0% 且 BIAS20 <= -3.5%",
       "status": "极限负乖离超卖",
       "action": "易触发强力均值回归反抽脉冲"
+    }
+  },
+  "large_order_fund_flow_ddx": {
+    "definition": "DDX = (当日主力净流入 / 流通市值) * 100%",
+    "level2_order_size_breakdown": {
+      "super_large_order": "单笔 >= 100 万元 (机构战略建仓 / 国家队护盘 / 头部游资主力封单)",
+      "large_order": "单笔 20 万元 ~ 100 万元 (机构与大户主力常规交易)",
+      "medium_order": "单笔 4 万元 ~ 20 万元 (中户 / 散户大单博弈)",
+      "small_order": "单笔 < 4 万元 (散户跟风买入 / 散户恐慌踩踏抛售)"
+    },
+    "main_fund_flow_definition": "主力净流入 = 超大单净买入 + 大单净买入",
+    "divergence_tags": {
+      "bullish_accumulation": {
+        "condition": "涨幅 <= 0% 且 主力净流入 > 0.3亿 且 DDX > +0.03%",
+        "status": "🔥主力逆势吸筹(正背离)",
+        "meaning": "股价受大盘或散户恐慌拖累收阴，但机构主力逆势逢低抢筹，筹码快速向机构集中，后市反弹动能强劲"
+      },
+      "bearish_distribution": {
+        "condition": "涨幅 >= 1.5% 且 主力净流入 < -0.3亿 且 DDX < -0.03%",
+        "status": "⚠️主力诱多出货(负背离)",
+        "meaning": "拉高诱多掩护出货，散户跟风接盘，超大单/大单趁机高位套现派发，警惕次日破位杀跌"
+      },
+      "strong_resonance": {
+        "condition": "涨幅 > 0% 且 主力净流入 > 0.5亿 且 DDX >= +0.05%",
+        "status": "🚀量价齐升强共振",
+        "meaning": "股价上涨与主力大单主动推升高度共振，属于健康的真金白银主升浪进攻形态"
+      },
+      "panic_selloff": {
+        "condition": "涨幅 < -1.5% 且 主力净流入 < -0.5亿 且 DDX <= -0.05%",
+        "status": "📉多杀多主力出逃",
+        "meaning": "机构与大单不计成本踩踏砸盘离场，空头动能宣泄，严禁在出现企稳信号前左侧接飞刀"
+      },
+      "bottom_support": {
+        "condition": "涨幅 <= 0% 且 超大单净流入 > 0.5亿",
+        "status": "💎超大单暗中托底",
+        "meaning": "虽有散户与大单抛压，但百万元级别超大单在关键技术均线处坚决承接托盘"
+      }
     }
   }
 }

@@ -1,0 +1,70 @@
+{
+  "description": "2026年美联储FOMC官方议息日程（从fomc_calendar_2026.md转换）",
+  "year": 2026,
+  "meetings": [
+    {
+      "sequence": 1,
+      "start_date": "2026-01-27",
+      "end_date": "2026-01-28",
+      "has_dot_plot": false,
+      "beijing_release": "2026-01-29T02:00:00+08:00",
+      "note": "常规会议"
+    },
+    {
+      "sequence": 2,
+      "start_date": "2026-03-17",
+      "end_date": "2026-03-18",
+      "has_dot_plot": true,
+      "beijing_release": "2026-03-19T02:00:00+08:00",
+      "note": "含点阵图(SEP)"
+    },
+    {
+      "sequence": 3,
+      "start_date": "2026-04-28",
+      "end_date": "2026-04-29",
+      "has_dot_plot": false,
+      "beijing_release": "2026-04-30T02:00:00+08:00",
+      "note": "常规会议（2026年无5月会议）"
+    },
+    {
+      "sequence": 4,
+      "start_date": "2026-06-16",
+      "end_date": "2026-06-17",
+      "has_dot_plot": true,
+      "beijing_release": "2026-06-18T02:00:00+08:00",
+      "note": "含点阵图(SEP)"
+    },
+    {
+      "sequence": 5,
+      "start_date": "2026-07-28",
+      "end_date": "2026-07-29",
+      "has_dot_plot": false,
+      "beijing_release": "2026-07-30T02:00:00+08:00",
+      "note": "常规会议"
+    },
+    {
+      "sequence": 6,
+      "start_date": "2026-09-15",
+      "end_date": "2026-09-16",
+      "has_dot_plot": true,
+      "beijing_release": "2026-09-17T02:00:00+08:00",
+      "note": "含点阵图(SEP)"
+    },
+    {
+      "sequence": 7,
+      "start_date": "2026-10-27",
+      "end_date": "2026-10-28",
+      "has_dot_plot": false,
+      "beijing_release": "2026-10-29T02:00:00+08:00",
+      "note": "常规会议（2026年无11月会议）"
+    },
+    {
+      "sequence": 8,
+      "start_date": "2026-12-08",
+      "end_date": "2026-12-09",
+      "has_dot_plot": true,
+      "beijing_release": "2026-12-10T03:00:00+08:00",
+      "note": "含点阵图(SEP)"
+    }
+  ]
+}
