@@ -23,6 +23,7 @@
 | **`wechat-pay`** | [`skills/wechat-pay`](./skills/wechat-pay/) | 微信支付 Native 扫码支付完整接入方案。**零 npm 依赖**，纯 Web Crypto API 实现 RSA-SHA256 签名与 AES-256-GCM 解密，完美适配 Cloudflare Workers/Pages Functions 运行时。含工具库、下单/查单/回调三个接口模板、数据库 DDL 及完整知识文档。 |
 | **`a-share-news-radar`** | [`skills/a-share-news-radar`](./skills/a-share-news-radar/) | A 股新闻投资方向雷达。**两阶段**：盘前预期扫描（08:00）+ 盘后确认跟踪（16:00），走 `事件 → 影响链 → 板块主题 → 候选股票池` 链路。核心是**证据分级**：S/A/B/C 四级来源绑定六种证据标签，情绪映射类概念股在打分上永远到不了高置信度。含确定性事件打分、报告字段校验器（`lint_report.py`）、SQLite 决策快照与 T+N 命中率回看、7 个历史回归用例。**数据零 token**：腾讯取快照/日K/分时/分钟K，新浪取四档资金与大单净量，**巨潮资讯取公告原文 PDF**（「公告确认」标签的唯一合法来源）。附 `doctor.py` 环境自检，换机器先跑一遍就知道哪些通道可用。 |
 | **`ashare-quant-review`** | [`skills/ashare-quant-review`](./skills/ashare-quant-review/) | A 股全维度量化复盘与操盘策略推演专业技能。**混合架构（本地确定性高精脚本 + 大模型高维软研判）**。独立拆解双创科技成长量能（创业板综全板/科创综指全板/科创芯片/TCR拥挤度）、中金所四大期指主力基差与中信席位代客Alpha对冲监控、两融杠杆出清弹性、国家队宽基ETF托底特征，以及全球AI巨头财报/CAPEX三层穿透映射。数据零Token秒级抓取，输出结构严密的 Markdown 仪表板。 |
+| **`douyin-video-scraper`** | [`skills/douyin-video-scraper`](./skills/douyin-video-scraper/) | 抖音博主视频批量采集与结构化成文工具链。**不逆向签名**，用 Playwright + 真 Chrome 拦截作品接口响应拿列表，抓到即下载 mp4 抽音频（规避直链签名过期），批量 ASR 转写后按时间偏移切回逐字稿。核心亮点是**关键词驱动的关键画面提取**：从逐字稿定位公式/表格/程序输出的时间点密抽帧，用 vision 转成 Markdown 文字，还原纯文字稿拿不到的信息。长视频独立成篇、短评按周合并，成文可直接入库 ima 知识库做选题素材。 |
 
 ---
 
@@ -43,6 +44,9 @@ cp -r /path/to/fantasy-things/skills/edge-tts .agents/skills/
 # A 股雷达
 cp -r /path/to/fantasy-things/skills/a-share-news-radar .agents/skills/
 cp -r /path/to/fantasy-things/skills/ashare-quant-review .agents/skills/
+
+# 抖音视频采集（需另装 playwright-core + 本机 Chrome + ffmpeg）
+cp -r /path/to/fantasy-things/skills/douyin-video-scraper .agents/skills/
 ```
 
 ### 方式 2：全局引入（所有工作区通用）
@@ -61,6 +65,7 @@ Copy-Item -Recurse -Force "skills\site-walkthrough-video" "$HOME\.gemini\config\
 Copy-Item -Recurse -Force "skills\wechat-pay" "$HOME\.gemini\config\skills\"
 Copy-Item -Recurse -Force "skills\a-share-news-radar" "$HOME\.gemini\config\skills\"
 Copy-Item -Recurse -Force "skills\ashare-quant-review" "$HOME\.gemini\config\skills\"
+Copy-Item -Recurse -Force "skills\douyin-video-scraper" "$HOME\.gemini\config\skills\"
 ```
 
 ### 方式 3：Chrome 浏览器扩展加载（以 FlowStudioPro 为例）
@@ -133,6 +138,23 @@ Copy-Item -Recurse -Force "skills\ashare-quant-review" "$HOME\.gemini\config\ski
   ```
 - **文档**: 详见 [`skills/ashare-quant-review/SKILL.md`](./skills/ashare-quant-review/SKILL.md)
 
+### 8. 抖音视频采集与结构化成文 (`douyin-video-scraper`)
+- **定位**: 把抖音博主视频批量转成「逐字稿 + 关键画面文字还原 + 结构化文章」，入库知识库做选题素材。
+- **核心能力**:
+  - **不逆向签名**: Playwright + 真 Chrome 打开主页，拦截 `/aweme/v1/web/aweme/post/` 响应拿作品列表。
+  - **抓到即下载**: 视频直链带签名会过期，拦截到列表当场下载 mp4 并抽 16kHz 音频，规避 0KB 坑。
+  - **批量 ASR + 切分**: 多条音频拼接成组一次转写，再按时间偏移切回单条逐字稿（兼容双层 JSON）。
+  - **关键画面提取**: 关键词定位公式/表格/程序输出的时间点密抽帧，用 vision 转成 Markdown 文字。
+- **环境要求**: Node 18+、Python 3.7+、`playwright-core`、本机 Google Chrome、`ffmpeg`
+- **一键运行命令**:
+  ```bash
+  npm install playwright-core
+  node skills/douyin-video-scraper/scripts/resolve_user.js Bruce_Gold     # 抖音号 -> sec_uid
+  node skills/douyin-video-scraper/scripts/fetch_posts.js <sec_uid>       # 抓作品列表
+  node skills/douyin-video-scraper/scripts/download_media.js <sec_uid>    # 下载 + 抽音频
+  ```
+- **文档**: 详见 [`skills/douyin-video-scraper/SKILL.md`](./skills/douyin-video-scraper/SKILL.md)
+
 ---
 
 ## 📂 仓库目录结构
@@ -159,10 +181,15 @@ fantasy-things/
     │       ├── query.ts               # 查单接口 + grantMembership
     │       ├── notify.ts              # 回调通知处理
     │       └── orders.sql             # 数据库订单表 DDL
-    └── ashare-quant-review/           # A股全维度量化复盘与策略推演
-        ├── SKILL.md                   # 技能核心指导手册与执行工作流
-        ├── references/                # 2026 FOMC日历、三层映射股票池与量化阈值
-        └── scripts/                   # 确定性数据引擎与七大看板调度套件
+    ├── ashare-quant-review/           # A股全维度量化复盘与策略推演
+    │   ├── SKILL.md                   # 技能核心指导手册与执行工作流
+    │   ├── references/                # 2026 FOMC日历、三层映射股票池与量化阈值
+    │   └── scripts/                   # 确定性数据引擎与七大看板调度套件
+    └── douyin-video-scraper/          # 抖音视频采集与结构化成文
+        ├── SKILL.md                   # 五步链路 + 铁律 + 走不通的路
+        ├── workbuddy.json             # Skill 规范元数据
+        ├── references/                # 链路细节 / 踩坑 / ASR校正 / 成文模板
+        └── scripts/                   # 采集 / 下载 / 拼接 / 切分 / 清理脚本
 ```
 
 ---

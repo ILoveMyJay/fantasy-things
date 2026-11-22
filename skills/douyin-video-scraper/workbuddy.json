@@ -1,0 +1,45 @@
+{
+  "id": "douyin-video-scraper",
+  "name": "douyin-video-scraper",
+  "displayName": "抖音视频采集与成文",
+  "version": "1.0.0",
+  "description": "批量采集抖音博主视频并转成结构化文章：Playwright 拦截作品接口拿列表，抓到即下载 mp4 抽音频，批量 ASR 转写后按时间偏移切回逐字稿，关键词驱动密抽帧提取画面里的公式/表格/程序输出并用 vision 转成 Markdown，最终成文可入库 ima 知识库。不逆向签名，只拦截真实 Chrome 的自然请求。",
+  "author": "ILoveMyJay",
+  "license": "MIT",
+  "tags": [
+    "douyin",
+    "scraper",
+    "video",
+    "transcription",
+    "asr",
+    "content-curation",
+    "ima",
+    "browser-automation"
+  ],
+  "env": [],
+  "outputs": [],
+  "requirements": {
+    "node": ">=18",
+    "python": ">=3.7",
+    "packages": [
+      "playwright-core"
+    ],
+    "binaries": [
+      "google-chrome",
+      "ffmpeg"
+    ],
+    "network": [
+      "www.iesdouyin.com",
+      "www.douyin.com"
+    ]
+  },
+  "entrypoints": {
+    "resolve": "scripts/resolve_user.js",
+    "fetch": "scripts/fetch_posts.js",
+    "download": "scripts/download_media.js",
+    "group": "scripts/make_groups.py",
+    "split": "scripts/split_transcript.py",
+    "cleanup": "scripts/cleanup.py"
+  },
+  "agentCreated": true
+}

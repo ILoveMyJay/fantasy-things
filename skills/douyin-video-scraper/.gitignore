@@ -1,0 +1,26 @@
+# 浏览器持久化登录态（含 cookies，切勿提交）
+.udd/
+
+# 运行时产物
+posts.json
+manifest.json
+groups.json
+groups/
+all/
+all_txt/
+
+# 下载的音视频与截图
+*.mp4
+*.mp3
+*.jpg
+*.jpeg
+*.png
+*.wav
+*.m4a
+
+# 依赖
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
