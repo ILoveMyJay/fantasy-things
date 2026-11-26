@@ -1,0 +1,8 @@
+# 本地运行时积累的数据库与缓存文件，不提交至版本库
+data/*.sqlite
+data/*.sqlite-journal
+data/*.csv
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/

@@ -1,0 +1,60 @@
+{
+  "description": "ashare-market-compass 透明白盒阈值与四态仲裁配置（布鲁斯四层体系公开复刻版）",
+  "breadth_trin": {
+    "top_divergence": {
+      "adv_ratio_min": 70.0,
+      "trin_amount_min": 1.35,
+      "label": "高位量价背离（小票无量补涨、权重放量出货）"
+    },
+    "fake_rebound": {
+      "adv_ratio_min": 65.0,
+      "trin_amount_min": 0.88,
+      "label": "缩量普涨 / 空头回补（大蓝筹未主动爆量进攻）"
+    },
+    "weight_propping": {
+      "adv_ratio_max": 45.0,
+      "trin_amount_max": 0.58,
+      "amt_breadth_spread_min": 10.0,
+      "label": "抱团护盘 / 托而不举（少数权重硬拉，宽广度报废）"
+    },
+    "ice_point_candidate": {
+      "adv_ratio_max": 55.0,
+      "trin_amount_max": 0.40,
+      "label": "疑似资金扫货冰点（须中期层共振 + 次日持续放量确认）"
+    },
+    "high_turnover_cooling_pct": 8.0,
+    "high_turnover_overheat_pct": 25.0
+  },
+  "etf_weighted_accumulation": {
+    "lower_band": 30.0,
+    "upper_band": 70.0,
+    "fast_span": 5,
+    "slow_span": 20,
+    "norm_window": 120
+  },
+  "erp_bands": {
+    "rolling_window_days": 750,
+    "bull_sigma": 1.0,
+    "extreme_bottom_sigma": 1.5,
+    "bear_sigma": -1.0
+  },
+  "equal_weight_pe": {
+    "high_quantile": 0.70,
+    "low_quantile": 0.30
+  },
+  "cffex_basis": {
+    "deep_discount_annualized_pct": -15.0,
+    "extreme_discount_annualized_pct": -25.0,
+    "premium_bullish_pct": 2.0
+  },
+  "option_pcr": {
+    "smoothing_span": 5,
+    "lookback_days": 60,
+    "upper_quantile": 0.80,
+    "lower_quantile": 0.20,
+    "require_50_300_resonance": true
+  },
+  "decision_arbitration": {
+    "rule": "资金面定大势方向，技术面定入场时机；大势与小势冲突时强制输出 准备多 / 准备空（零仓位等待共振）"
+  }
+}

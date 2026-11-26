@@ -1,0 +1,24 @@
+{
+  "description": "19只主流A股宽基ETF核心观察池（覆盖上证50、沪深300、中证500、中证1000、创业板、科创50、中证A500等）",
+  "etfs": [
+    { "code": "510050", "exchange": "SSE", "secid": "1.510050", "name": "上证50ETF华夏", "category": "上证50" },
+    { "code": "510300", "exchange": "SSE", "secid": "1.510300", "name": "沪深300ETF华泰柏瑞", "category": "沪深300" },
+    { "code": "510310", "exchange": "SSE", "secid": "1.510310", "name": "沪深300ETF易方达", "category": "沪深300" },
+    { "code": "510330", "exchange": "SSE", "secid": "1.510330", "name": "沪深300ETF华夏", "category": "沪深300" },
+    { "code": "159919", "exchange": "SZSE", "secid": "0.159919", "name": "沪深300ETF嘉实", "category": "沪深300" },
+    { "code": "510500", "exchange": "SSE", "secid": "1.510500", "name": "中证500ETF南方", "category": "中证500" },
+    { "code": "512500", "exchange": "SSE", "secid": "1.512500", "name": "中证500ETF华夏", "category": "中证500" },
+    { "code": "159922", "exchange": "SZSE", "secid": "0.159922", "name": "中证500ETF嘉实", "category": "中证500" },
+    { "code": "512100", "exchange": "SSE", "secid": "1.512100", "name": "中证1000ETF南方", "category": "中证1000" },
+    { "code": "159845", "exchange": "SZSE", "secid": "0.159845", "name": "中证1000ETF华夏", "category": "中证1000" },
+    { "code": "159629", "exchange": "SZSE", "secid": "0.159629", "name": "中证1000ETF富国", "category": "中证1000" },
+    { "code": "560010", "exchange": "SSE", "secid": "1.560010", "name": "中证1000ETF广发", "category": "中证1000" },
+    { "code": "159915", "exchange": "SZSE", "secid": "0.159915", "name": "创业板ETF易方达", "category": "创业板" },
+    { "code": "159949", "exchange": "SZSE", "secid": "0.159949", "name": "创业板50ETF华安", "category": "创业板" },
+    { "code": "588000", "exchange": "SSE", "secid": "1.588000", "name": "科创50ETF华夏", "category": "科创50" },
+    { "code": "588080", "exchange": "SSE", "secid": "1.588080", "name": "科创50ETF易方达", "category": "科创50" },
+    { "code": "510530", "exchange": "SSE", "secid": "1.510530", "name": "中证A500ETF国泰", "category": "中证A500" },
+    { "code": "159338", "exchange": "SZSE", "secid": "0.159338", "name": "中证A500ETF国泰(深)", "category": "中证A500" },
+    { "code": "563000", "exchange": "SSE", "secid": "1.563000", "name": "中证2000ETF华泰柏瑞", "category": "中证2000" }
+  ]
+}
