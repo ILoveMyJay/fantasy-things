@@ -100,29 +100,76 @@ def _fetch_eastmoney_yield(symbol_key):
     return None
 
 
+def _fetch_eastmoney_datacenter_yields():
+    """
+    通过东财数据中心国债收益率曲线接口 (RPTA_WEB_TREASURYYIELD) 获取中美 10Y 国债收益率
+    EMM00166466 = 中国10年期国债收益率 (%)
+    EMG00001310 = 美国10年期国债收益率 (%)
+
+    返回:
+        (us_10y, cn_10y, yield_date) 元组，失败项返回 None
+    """
+    url = (
+        'https://datacenter-web.eastmoney.com/api/data/v1/get'
+        '?reportName=RPTA_WEB_TREASURYYIELD'
+        '&columns=SOLAR_DATE,EMM00166466,EMG00001310'
+        '&sortColumns=SOLAR_DATE&sortTypes=-1&pageSize=5'
+    )
+    us_10y = None
+    cn_10y = None
+    yield_date = None
+    try:
+        req = urllib.request.Request(url, headers={
+            'User-Agent': 'Mozilla/5.0',
+            'Referer': 'https://data.eastmoney.com/'
+        })
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            res = json.loads(resp.read().decode('utf-8'))
+            rows = (res.get('result') or {}).get('data') or []
+            for row in rows:
+                if cn_10y is None and row.get('EMM00166466') is not None:
+                    val = float(row['EMM00166466'])
+                    if val > 0:
+                        cn_10y = val
+                        if not yield_date and row.get('SOLAR_DATE'):
+                            yield_date = str(row['SOLAR_DATE'])[:10]
+                if us_10y is None and row.get('EMG00001310') is not None:
+                    val = float(row['EMG00001310'])
+                    if val > 0:
+                        us_10y = val
+                if cn_10y is not None and us_10y is not None:
+                    break
+    except Exception:
+        pass
+    return us_10y, cn_10y, yield_date
+
+
 def get_macro_yields():
     """
     获取中美10年期国债收益率与利差
 
-    轮询策略：新浪主选 → 东财备选
+    轮询策略：
+      - 美债10Y：新浪实时主选 → 东财数据中心备选 → 东财 push2 兜底
+      - 中债10Y：东财数据中心(RPTA_WEB_TREASURYYIELD)主选 → 新浪备选 → 东财 push2 兜底
     失败策略：返回 None，打印 [WARN]，严禁伪造数字
     """
-    us_10y = None
-    cn_10y = None
-
-    # 美债10年：新浪主选 → 东财备选
     us_10y = _fetch_sina_yield('US10Y')
+    dc_us, dc_cn, yield_date = _fetch_eastmoney_datacenter_yields()
+
+    if us_10y is None:
+        us_10y = dc_us
     if us_10y is None:
         us_10y = _fetch_eastmoney_yield('US10Y')
     if us_10y is None:
         print("[WARN] 美债10Y收益率接口不可用（新浪+东财均失败），当前值置空，严禁使用假数据！", file=sys.stderr)
 
-    # 中债10年：新浪主选 → 东财备选
-    cn_10y = _fetch_sina_yield('CN10Y')
+    cn_10y = dc_cn
+    if cn_10y is None:
+        cn_10y = _fetch_sina_yield('CN10Y')
     if cn_10y is None:
         cn_10y = _fetch_eastmoney_yield('CN10Y')
     if cn_10y is None:
-        print("[WARN] 中债10Y收益率接口不可用（新浪+东财均失败），当前值置空，严禁使用假数据！", file=sys.stderr)
+        print("[WARN] 中债10Y收益率接口不可用（东财数据中心+新浪均失败），当前值置空，严禁使用假数据！", file=sys.stderr)
 
     # 利差计算：任一为 None 则利差也为 None
     spread_bp = None
@@ -133,6 +180,7 @@ def get_macro_yields():
         'us_10y': round(us_10y, 4) if us_10y is not None else None,
         'cn_10y': round(cn_10y, 4) if cn_10y is not None else None,
         'spread_bp': spread_bp,
+        'yield_date': yield_date,
     }
 
 

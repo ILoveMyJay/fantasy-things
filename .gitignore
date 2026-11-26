@@ -28,3 +28,8 @@ tmp/
 .vscode/
 *.swp
 *.swo
+
+# Quant skill runtime caches
+skills/ashare-quant-review/data/etf_share_history.json
+skills/ashare-quant-review/data/etf_minute_store.db
+skills/ashare-quant-review/data/etf_minute_store.parquet

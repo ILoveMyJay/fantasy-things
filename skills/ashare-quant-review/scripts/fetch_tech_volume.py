@@ -131,43 +131,27 @@ def calculate_vr20():
     计算全市场成交量比率 VR20
 
     公式: VR20 = (sum(V_up) + 0.5 * sum(V_flat)) / (sum(V_down) + 0.5 * sum(V_flat)) * 100
-      - V_up: 过去20个交易日中上涨日的成交额
-      - V_down: 过去20个交易日中下跌日的成交额
-      - V_flat: 过去20个交易日中平盘日的成交额
+      - 优先采用腾讯日K线接口（高可用、零限流）拉取上证+深证近 21 个已完成交易日成交量与收盘价；
+      - 涨跌日严格以“当日收盘 vs 前一交易日收盘”判定。
 
     阈值:
       - VR20 < 70: 中线超卖低吸区
       - VR20 > 250: 中线极度过热出货区
       - 70 <= VR20 <= 250: 常态均衡量能区间
-
-    返回:
-        dict 包含 vr20, status, v_up, v_down, v_flat, trading_days_used
-        若数据不足返回 None 相关字段
     """
-    # 获取上证指数最近21根日K线（20个交易日需要至少21根来判断涨跌）
     try:
-        url_sh = ('http://push2his.eastmoney.com/api/qt/stock/kline/get'
-                   '?secid=1.000001'
-                   '&fields1=f1,f2,f3,f4,f5,f6'
-                   '&fields2=f51,f52,f53,f54,f55,f56,f57'
-                   '&klt=101&fqt=1&end=20500101&lmt=25')
-        url_sz = ('http://push2his.eastmoney.com/api/qt/stock/kline/get'
-                   '?secid=0.399001'
-                   '&fields1=f1,f2,f3,f4,f5,f6'
-                   '&fields2=f51,f52,f53,f54,f55,f56,f57'
-                   '&klt=101&fqt=1&end=20500101&lmt=25')
         headers = {'User-Agent': 'Mozilla/5.0'}
 
-        req_sh = urllib.request.Request(url_sh, headers=headers)
-        req_sz = urllib.request.Request(url_sz, headers=headers)
+        def _fetch_tx_kline(sym):
+            u = f'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={sym},day,,,26,qfq'
+            with urllib.request.urlopen(urllib.request.Request(u, headers=headers), timeout=5) as r:
+                d = json.loads(r.read().decode('utf-8')).get('data', {}).get(sym, {})
+                return d.get('day') or d.get('qfqday') or []
 
-        with urllib.request.urlopen(req_sh, timeout=5) as r1, \
-             urllib.request.urlopen(req_sz, timeout=5) as r2:
-            klines_sh = json.loads(r1.read().decode())['data']['klines']
-            klines_sz = json.loads(r2.read().decode())['data']['klines']
+        tx_sh = _fetch_tx_kline('sh000001')
+        tx_sz = _fetch_tx_kline('sz399001')
 
-        if len(klines_sh) < 21 or len(klines_sz) < 21:
-            print("[WARN] VR20计算所需K线数据不足", file=sys.stderr)
+        if len(tx_sh) < 21 or len(tx_sz) < 21:
             return {
                 'vr20': None,
                 'status': '数据不足',
@@ -175,47 +159,44 @@ def calculate_vr20():
                 'trading_days_used': 0,
             }
 
-        # 取最近20根（排除最后一根可能是当日未收盘数据）
-        # 格式: 日期,开盘,收盘,最高,最低,成交量(手),成交额(元)
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        # 剔除当日未收盘柱，保留最近 21 个已完成交易日（计算 20 个涨跌日）
+        sh_done = [r for r in tx_sh if len(r) >= 6 and r[0] < today_str][-21:]
+        sz_by_date = {r[0]: float(r[5]) for r in tx_sz if len(r) >= 6 and r[0] < today_str}
+
         v_up = 0.0
         v_down = 0.0
         v_flat = 0.0
         days_used = 0
 
-        # 使用最近20个已完成交易日
-        sh_data = klines_sh[-21:-1] if len(klines_sh) >= 22 else klines_sh[-21:]
-        sz_data = klines_sz[-21:-1] if len(klines_sz) >= 22 else klines_sz[-21:]
+        for i in range(1, len(sh_done)):
+            d_str = sh_done[i][0]
+            prev_close = float(sh_done[i - 1][2])
+            curr_close = float(sh_done[i][2])
+            day_vol = float(sh_done[i][5]) + sz_by_date.get(d_str, 0.0)
 
-        for i in range(min(len(sh_data), len(sz_data))):
-            sh_parts = sh_data[i].split(',')
-            sz_parts = sz_data[i].split(',')
-
-            # 成交额（元 → 亿元）
-            sh_amt = float(sh_parts[6]) / 1e8
-            sz_amt = float(sz_parts[6]) / 1e8
-            day_amt = sh_amt + sz_amt
-
-            # 上证涨跌判断（收盘 vs 开盘）
-            sh_open = float(sh_parts[1])
-            sh_close = float(sh_parts[2])
-
-            if sh_close > sh_open:
-                v_up += day_amt
-            elif sh_close < sh_open:
-                v_down += day_amt
+            if curr_close > prev_close:
+                v_up += day_vol
+            elif curr_close < prev_close:
+                v_down += day_vol
             else:
-                v_flat += day_amt
-
+                v_flat += day_vol
             days_used += 1
 
-        # 计算 VR20
+        if days_used < 10:
+            return {
+                'vr20': None,
+                'status': '数据不足',
+                'v_up': 0, 'v_down': 0, 'v_flat': 0,
+                'trading_days_used': days_used,
+            }
+
         denominator = v_down + 0.5 * v_flat
         if denominator <= 0:
-            vr20 = 999.99  # 分母为零，表明全部上涨
+            vr20 = 999.99
         else:
-            vr20 = round((v_up + 0.5 * v_flat) / denominator * 100, 2)
+            vr20 = round((v_up + 0.5 * v_flat) / denominator * 100.0, 2)
 
-        # 状态判定
         if vr20 < 70:
             vr_status = "中线超卖低吸区"
             vr_level = "OVERSOLD"
@@ -230,9 +211,9 @@ def calculate_vr20():
             'vr20': vr20,
             'status': vr_status,
             'level': vr_level,
-            'v_up': round(v_up, 2),
-            'v_down': round(v_down, 2),
-            'v_flat': round(v_flat, 2),
+            'v_up': round(v_up / 1e8, 2),
+            'v_down': round(v_down / 1e8, 2),
+            'v_flat': round(v_flat / 1e8, 2),
             'trading_days_used': days_used,
         }
 
@@ -250,37 +231,140 @@ def calculate_vr20():
 #  历史成交额环比
 # ---------------------------------------------------------------------------
 
-def fetch_market_volume_delta():
+def _fetch_official_exchange_prev_turnover(quote_date_str=None):
     """
-    通过历史日K线计算沪深两市上一交易日成交额及环比增减额/增减比例
+    高可用备选源：直连上交所(query.sse.com.cn) + 深交所(szse.cn)官方每日成交概况接口，
+    获取前一完整交易日的沪深股票总成交额（亿元），彻底免疫东财 push2his 限流。
     """
     try:
-        url_sh = ('http://push2his.eastmoney.com/api/qt/stock/kline/get'
-                   '?secid=1.000001'
-                   '&fields1=f1,f2,f3,f4,f5,f6'
-                   '&fields2=f51,f52,f53,f54,f55,f56,f57'
-                   '&klt=101&fqt=1&end=20500101&lmt=5')
-        url_sz = ('http://push2his.eastmoney.com/api/qt/stock/kline/get'
-                   '?secid=0.399001'
-                   '&fields1=f1,f2,f3,f4,f5,f6'
-                   '&fields2=f51,f52,f53,f54,f55,f56,f57'
-                   '&klt=101&fqt=1&end=20500101&lmt=5')
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        req_sh = urllib.request.Request(url_sh, headers=headers)
-        req_sz = urllib.request.Request(url_sz, headers=headers)
-        with urllib.request.urlopen(req_sh, timeout=4) as r1, \
-             urllib.request.urlopen(req_sz, timeout=4) as r2:
-            d_sh = json.loads(r1.read().decode())['data']['klines']
-            d_sz = json.loads(r2.read().decode())['data']['klines']
-            if len(d_sh) >= 2 and len(d_sz) >= 2:
-                prev_sh_amt = float(d_sh[-2].split(',')[6]) / 1e8
-                prev_sz_amt = float(d_sz[-2].split(',')[6]) / 1e8
-                prev_total = round(prev_sh_amt + prev_sz_amt, 2)
-                prev_date = d_sh[-2].split(',')[0]
-                return {
-                    'prev_trade_date': prev_date,
-                    'prev_total_market_amt': prev_total,
-                }
+        from utils.calendar_guard import get_recent_trade_dates
+        recent = get_recent_trade_dates(count=5)
+    except Exception:
+        return None
+
+    target_qdate = None
+    if quote_date_str and len(quote_date_str) == 8:
+        target_qdate = f"{quote_date_str[:4]}-{quote_date_str[4:6]}-{quote_date_str[6:8]}"
+    else:
+        target_qdate = datetime.now().strftime('%Y-%m-%d')
+
+    prev_candidates = [d for d in recent if d < target_qdate]
+    if not prev_candidates:
+        return None
+    prev_date = prev_candidates[-1]
+
+    # 1. 上交所官方股票成交额（PRODUCT_CODE 01=主板A, 02=主板B, 03=科创板）
+    sh_amt = None
+    try:
+        u_sse = f'https://query.sse.com.cn/commonQuery.do?sqlId=COMMON_SSE_SJ_GPSJ_CJGK_MRGK_C&SEARCH_DATE={prev_date}'
+        req = urllib.request.Request(u_sse, headers={'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.sse.com.cn/'})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            rows = json.loads(r.read().decode('utf-8')).get('result') or []
+            tot_sh = 0.0
+            found = False
+            for row in rows:
+                if row.get('PRODUCT_CODE') in ('01', '02', '03') and row.get('TRADE_AMT') not in (None, '', '-'):
+                    tot_sh += float(str(row['TRADE_AMT']).replace(',', ''))
+                    found = True
+            if found and tot_sh > 0:
+                sh_amt = round(tot_sh, 2)
+    except Exception:
+        pass
+
+    # 2. 深交所官方股票成交额（CATALOGID=1803）
+    sz_amt = None
+    try:
+        u_sz = f'https://www.szse.cn/api/report/ShowReport/data?SHOWTYPE=JSON&CATALOGID=1803&TABKEY=tab1&txtQueryDate={prev_date}'
+        req = urllib.request.Request(u_sz, headers={'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.szse.cn/'})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            arr = json.loads(r.read().decode('utf-8'))
+            for row in (arr[0].get('data') or []) if arr else []:
+                if '股票成交金额' in str(row.get('zbmc', '')):
+                    val = str(row.get('brsz', '')).replace(',', '').strip()
+                    if val and val != '-':
+                        sz_amt = round(float(val), 2)
+                        break
+    except Exception:
+        pass
+
+    if sh_amt is not None and sz_amt is not None:
+        return {
+            'prev_trade_date': prev_date,
+            'prev_total_market_amt': round(sh_amt + sz_amt, 2),
+            'prev_sh_amt': sh_amt,
+            'prev_sz_amt': sz_amt,
+            'prev_bj_amt': 0.0,
+            'includes_bj': False,
+            'source': 'sse_szse_official',
+        }
+    return None
+
+
+def fetch_market_volume_delta(quote_date_str=None):
+    """
+    计算上一完整交易日成交额：
+      - 主源：上交所+深交所官方每日成交概况（零限流、权威法定口径）；
+      - 备源：东财 push2his 日K线（含北交所）。
+    失败时返回 None，严禁伪造数据。
+    """
+    official = _fetch_official_exchange_prev_turnover(quote_date_str)
+    if official:
+        return official
+
+    import time as _time
+    hosts = ['http://push2his.eastmoney.com', 'http://64.push2his.eastmoney.com']
+    headers = {'User-Agent': 'Mozilla/5.0'}
+
+    def _get_klines(secid):
+        for attempt in range(2):
+            for host in hosts:
+                try:
+                    url = (
+                        f'{host}/api/qt/stock/kline/get?secid={secid}'
+                        '&fields1=f1,f2,f3,f4,f5,f6'
+                        '&fields2=f51,f52,f53,f54,f55,f56,f57'
+                        '&klt=101&fqt=1&end=20500101&lmt=5'
+                    )
+                    req = urllib.request.Request(url, headers=headers)
+                    with urllib.request.urlopen(req, timeout=4) as r:
+                        data = json.loads(r.read().decode('utf-8')).get('data') or {}
+                        kl = data.get('klines') or []
+                        if kl:
+                            return kl
+                except Exception:
+                    _time.sleep(0.2)
+        return []
+
+    try:
+        d_sh = _get_klines('1.000001')
+        d_sz = _get_klines('0.399001')
+        d_bj = _get_klines('0.899050')
+
+        if len(d_sh) < 2 or len(d_sz) < 2:
+            return None
+
+        sh_by_date = {row.split(',')[0]: float(row.split(',')[6]) / 1e8 for row in d_sh}
+        sz_by_date = {row.split(',')[0]: float(row.split(',')[6]) / 1e8 for row in d_sz}
+        bj_by_date = {row.split(',')[0]: float(row.split(',')[6]) / 1e8 for row in d_bj}
+
+        common_dates = sorted(set(sh_by_date.keys()) & set(sz_by_date.keys()))
+        if len(common_dates) < 2:
+            return None
+
+        prev_date = common_dates[-2]
+        prev_sh = sh_by_date[prev_date]
+        prev_sz = sz_by_date[prev_date]
+        prev_bj = bj_by_date.get(prev_date, 0.0)
+        prev_total = round(prev_sh + prev_sz + prev_bj, 2)
+        return {
+            'prev_trade_date': prev_date,
+            'prev_total_market_amt': prev_total,
+            'prev_sh_amt': round(prev_sh, 2),
+            'prev_sz_amt': round(prev_sz, 2),
+            'prev_bj_amt': round(prev_bj, 2),
+            'includes_bj': prev_date in bj_by_date,
+            'source': 'eastmoney_push2his',
+        }
     except Exception as e:
         sys.stderr.write(f"Warning: fetch_market_volume_delta: {e}\n")
     return None
@@ -292,14 +376,16 @@ def fetch_market_volume_delta():
 
 def fetch_tech_volume_dashboard():
     """
-    看板 2 主入口：大盘总量能、双创 TCR 拥挤度与 VR20
+    看板 2 主入口：大盘总量能、核心宽基指数涨跌、双创 TCR 拥挤度与 VR20
 
     返回:
         dict 包含完整量能数据
     """
-    # 拉取指数行情（含北交所 bj899050）
-    symbols = ['sh000001', 'sz399001', 'sz399102', 'sz399006',
-               'sh000680', 'sh000688', 'sh000685', 'bj899050']
+    # 拉取核心宽基与双创指数行情（含沪深300/中证500/中证1000/北交所）
+    symbols = [
+        'sh000001', 'sz399001', 'sh000300', 'sh000905', 'sz399852',
+        'sz399102', 'sz399006', 'sh000680', 'sh000688', 'sh000685', 'bj899050'
+    ]
     url = f'https://qt.gtimg.cn/q={",".join(symbols)}'
 
     indices = {}
@@ -356,28 +442,44 @@ def fetch_tech_volume_dashboard():
                 f"盘中态（开盘{elapsed_minutes}分钟/加权折算），"
                 f"当前{total_market_amt}亿元，预估全天{estimated_full_day}亿元"
             )
+    # 午休期间按已开盘120分钟外推全天，盘前/盘后不外推
+    elif session_phase in ('lunch_break', 'noon_break'):
+        estimated_full_day = estimate_full_day_volume(total_market_amt, 120)
+        volume_estimate_note = (
+            f"午间休市（半日120分钟/U型折算），"
+            f"当前{total_market_amt}亿元，预估全天{estimated_full_day}亿元"
+        )
     else:
         estimated_full_day = total_market_amt
-        volume_estimate_note = f"盘后数据（{session_phase}），全天成交额{total_market_amt}亿元"
+        volume_estimate_note = f"盘后/盘前数据（{session_phase}），成交额{total_market_amt}亿元"
 
-    # 获取历史环比成交额
-    delta_info = fetch_market_volume_delta()
+    # 获取历史环比成交额（严格同口径对比：若前一日为沪深口径，则当日亦取沪深口径对比）
+    delta_info = fetch_market_volume_delta(quote_date)
+    use_estimate_for_delta = is_intraday or session_phase in ('lunch_break', 'noon_break')
     if delta_info and delta_info.get('prev_total_market_amt'):
         prev_amt = delta_info['prev_total_market_amt']
-        compare_amt = estimated_full_day if is_intraday else total_market_amt
+        prev_date = delta_info.get('prev_trade_date', 'T-1')
+        sh_sz_curr = round(sh_amt + sz_amt, 2)
+        if delta_info.get('includes_bj'):
+            compare_amt = estimated_full_day if use_estimate_for_delta else total_market_amt
+            scope_note = "沪深北"
+        else:
+            compare_amt = estimate_full_day_volume(sh_sz_curr, elapsed_minutes if is_intraday else 120) if use_estimate_for_delta else sh_sz_curr
+            scope_note = "沪深"
         delta_amt = round(compare_amt - prev_amt, 2)
         delta_pct = round((delta_amt / prev_amt) * 100.0, 2) if prev_amt > 0 else 0
+        prefix = '预估' if use_estimate_for_delta else ''
         if delta_amt > 0:
-            volume_edge = f"{'预估' if is_intraday else ''}较前一交易日放量 +{delta_amt} 亿元 (+{delta_pct}%)"
+            volume_edge = f"{prefix}较前一日({prev_date}/{scope_note})放量 +{delta_amt} 亿元 (+{delta_pct}%)"
             volume_trend = "EXPANDING"
         else:
-            volume_edge = f"{'预估' if is_intraday else ''}较前一交易日缩量 {abs(delta_amt)} 亿元 ({delta_pct}%)"
+            volume_edge = f"{prefix}较前一日({prev_date}/{scope_note})缩量 {abs(delta_amt)} 亿元 ({delta_pct}%)"
             volume_trend = "SHRINKING"
     else:
         prev_amt = None
         delta_amt = None
         delta_pct = None
-        volume_edge = "前一交易日数据暂不可用"
+        volume_edge = "前一交易日成交额接口暂不可用（严禁估算填充）"
         volume_trend = "UNKNOWN"
 
     # 双创量能

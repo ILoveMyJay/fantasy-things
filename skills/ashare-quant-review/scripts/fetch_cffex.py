@@ -102,16 +102,13 @@ def fetch_cffex_basis(
         except Exception as e:
             sys.stderr.write(f"[WARN] 获取期现基差行情异常: {e}\n")
 
-    # 兜底默认值
-    defaults_f = {'IF': 4010.4, 'IC': 6422.0, 'IM': 6354.0, 'IH': 2736.8}
-    defaults_s = {'IF': 4030.0, 'IC': 6480.0, 'IM': 6410.0, 'IH': 2745.0}
-
+    # 严禁使用硬编码假价格兜底，接口缺失则置 None
     is_delivery_week = days <= 4
     basis_table = {}
 
     for prefix in ['IF', 'IC', 'IM', 'IH']:
-        s_val = spot_map.get(prefix, defaults_s.get(prefix))
-        f_val = futures_map.get(prefix, defaults_f.get(prefix))
+        s_val = spot_map.get(prefix)
+        f_val = futures_map.get(prefix)
 
         if s_val and f_val:
             basis = round(f_val - s_val, 2)
@@ -129,8 +126,8 @@ def fetch_cffex_basis(
 
             basis_table[prefix] = {
                 'contract': f"{prefix}{suffix}",
-                'futures_price': f_val,
-                'spot_price': s_val,
+                'futures_price': round(f_val, 2),
+                'spot_price': round(s_val, 2),
                 'basis': basis,
                 'annualized_discount_rate': annualized,
                 'is_extreme_oversold_signal': is_extreme,
@@ -209,38 +206,96 @@ def fetch_citic_positions(
             "IH": {"total_long": 0, "long_chg": 0, "total_short": 0, "short_chg": 0, "net_short": 0, "net_short_chg": 0},
         }
 
-    # 尝试使用 akshare 拉取
-    citic_res = {"party_name": _TARGET, "total_long": 0, "total_short": 0, "net_short": 0, "net_short_chg": 0}
+    # 尝试使用 akshare 真实接口 get_cffex_rank_table 拉取（自动回溯最近已披露交易日）
+    citic_res = {
+        "party_name": _TARGET,
+        "total_long": 0,
+        "total_short": 0,
+        "net_short": 0,
+        "net_short_chg": 0,
+        "trade_date": None,
+    }
     try:
         import akshare as ak
-        if trade_date is None:
-            today = date.today()
-            trade_date = today.strftime("%Y%m%d")
-        
-        # 兼容 futures_rank_table_cffex
-        df = None
-        if hasattr(ak, "futures_rank_table_cffex"):
-            df = ak.futures_rank_table_cffex(date=trade_date, symbols="IF,IC,IM,IH")
-        
-        if df is not None and not df.empty:
+        if ak is None:
+            raise ImportError("akshare is None")
+
+        # 构建候选日期列表：指定日期优先，否则倒序探测最近 7 个交易日/自然日
+        candidate_dates = []
+        if trade_date is not None:
+            candidate_dates.append(trade_date.replace("-", ""))
+        else:
+            try:
+                from utils.calendar_guard import get_recent_trade_dates
+                recent = get_recent_trade_dates(count=7)
+                candidate_dates = [d.replace("-", "") for d in reversed(recent)]
+            except Exception:
+                today = date.today()
+                candidate_dates = [(today - timedelta(days=i)).strftime("%Y%m%d") for i in range(7)]
+
+        rank_dict = None
+        resolved_date = None
+        if hasattr(ak, "get_cffex_rank_table"):
+            for d_str in candidate_dates:
+                try:
+                    res = ak.get_cffex_rank_table(date=d_str)
+                    if isinstance(res, dict) and len(res) > 0:
+                        # 确认至少包含一个 IF/IC/IM/IH 合约且非空
+                        has_equity = any(
+                            str(k)[:2] in ('IF', 'IC', 'IM', 'IH') and v is not None and not v.empty
+                            for k, v in res.items()
+                        )
+                        if has_equity:
+                            rank_dict = res
+                            resolved_date = f"{d_str[:4]}-{d_str[4:6]}-{d_str[6:8]}"
+                            break
+                except Exception:
+                    continue
+
+        if rank_dict is not None:
+            per_var = {
+                v: {'total_long': 0, 'long_chg': 0, 'total_short': 0, 'short_chg': 0}
+                for v in ('IF', 'IC', 'IM', 'IH')
+            }
+            for sym, df in rank_dict.items():
+                pfx = str(sym)[:2]
+                if pfx not in per_var or df is None or df.empty:
+                    continue
+                if 'long_party_name' in df.columns:
+                    l_row = df[df['long_party_name'].map(_norm_party) == _TARGET]
+                    if not l_row.empty:
+                        per_var[pfx]['total_long'] += int(l_row['long_open_interest'].fillna(0).sum())
+                        per_var[pfx]['long_chg'] += int(l_row['long_open_interest_chg'].fillna(0).sum())
+                if 'short_party_name' in df.columns:
+                    s_row = df[df['short_party_name'].map(_norm_party) == _TARGET]
+                    if not s_row.empty:
+                        per_var[pfx]['total_short'] += int(s_row['short_open_interest'].fillna(0).sum())
+                        per_var[pfx]['short_chg'] += int(s_row['short_open_interest_chg'].fillna(0).sum())
+
+            tot_long = 0
+            tot_short = 0
             tot_net_short_chg = 0
-            for v in ['IF', 'IC', 'IM', 'IH']:
-                sub = df[df['variety'] == v] if 'variety' in df.columns else df[df['symbol'].astype(str).str[:2] == v]
-                l_row = sub[sub['long_party_name'].map(_norm_party) == _TARGET]
-                s_row = sub[sub['short_party_name'].map(_norm_party) == _TARGET]
-                t_long = int(l_row['long_open_interest'].sum()) if not l_row.empty else 0
-                t_long_chg = int(l_row['long_open_interest_chg'].sum()) if not l_row.empty else 0
-                t_short = int(s_row['short_open_interest'].sum()) if not s_row.empty else 0
-                t_short_chg = int(s_row['short_open_interest_chg'].sum()) if not s_row.empty else 0
-                v_net = t_short - t_long
-                v_chg = t_short_chg - t_long_chg
+            for v in ('IF', 'IC', 'IM', 'IH'):
+                p = per_var[v]
+                v_net = p['total_short'] - p['total_long']
+                v_chg = p['short_chg'] - p['long_chg']
+                tot_long += p['total_long']
+                tot_short += p['total_short']
                 tot_net_short_chg += v_chg
                 citic_res[v] = {
-                    'total_long': t_long, 'long_chg': t_long_chg,
-                    'total_short': t_short, 'short_chg': t_short_chg,
-                    'net_short': v_net, 'net_short_chg': v_chg
+                    'total_long': p['total_long'],
+                    'long_chg': p['long_chg'],
+                    'total_short': p['total_short'],
+                    'short_chg': p['short_chg'],
+                    'net_short': v_net,
+                    'net_short_chg': v_chg,
                 }
-            citic_res["net_short_chg"] = tot_net_short_chg
+            citic_res['total_long'] = tot_long
+            citic_res['total_short'] = tot_short
+            citic_res['net_short'] = tot_short - tot_long
+            citic_res['net_short_chg'] = tot_net_short_chg
+            citic_res['trade_date'] = resolved_date
+            citic_res['status'] = 'ok'
             return citic_res
     except Exception as e:
         sys.stderr.write(f"[WARN] 获取中信席位持仓异常: {e}\n")
@@ -249,7 +304,7 @@ def fetch_citic_positions(
     for v in ['IF', 'IC', 'IM', 'IH']:
         citic_res[v] = {'total_long': 0, 'long_chg': 0, 'total_short': 0, 'short_chg': 0, 'net_short': 0, 'net_short_chg': 0}
     citic_res['status'] = 'degraded'
-    citic_res['note'] = '中信席位数据已降级（akshare未安装或接口无返回）'
+    citic_res['note'] = '中信席位数据已降级（akshare未安装或当日/近期龙虎榜未披露）'
     return citic_res
 
 
@@ -360,6 +415,50 @@ def discriminate_citic_behavior(
     }
 
 
+def _analyze_style_divergence(citic: dict) -> str:
+    """拆解大盘(IF+IH) vs 中盘(IC) vs 小盘(IM) 净空变动，捕捉大小盘风格切换"""
+    if citic.get("status") == "degraded":
+        return "席位数据暂未获取，无法分析分品种风格切换。"
+    if_chg = citic.get("IF", {}).get("net_short_chg", 0)
+    ih_chg = citic.get("IH", {}).get("net_short_chg", 0)
+    ic_chg = citic.get("IC", {}).get("net_short_chg", 0)
+    im_chg = citic.get("IM", {}).get("net_short_chg", 0)
+    big_chg = if_chg + ih_chg
+    notes = []
+    if ic_chg > 800 and im_chg < -800:
+        notes.append(f"中盘 IC 净空增 {ic_chg:+d} 手而小盘 IM 净空减 {im_chg:+d} 手（量化/指增资金向中小微盘倾斜或做多 IM/IC 价差）")
+    elif ic_chg < -800 and im_chg > 800:
+        notes.append(f"中盘 IC 净空减 {ic_chg:+d} 手而小盘 IM 净空增 {im_chg:+d} 手（资金从小盘向中盘蓝筹回流）")
+    if big_chg < -1500 and (ic_chg + im_chg) > 1500:
+        notes.append(f"大盘权重(IF+IH)净空回补 {big_chg:+d} 手，中小盘(IC+IM)净空增加 {ic_chg + im_chg:+d} 手（防御切权重或中小盘对冲升温）")
+    elif big_chg > 1500 and (ic_chg + im_chg) < -1500:
+        notes.append(f"大盘权重(IF+IH)净空增加 {big_chg:+d} 手，中小盘(IC+IM)净空缩减 {ic_chg + im_chg:+d} 手（资金偏向中小盘弹性）")
+    if not notes:
+        notes.append(f"大盘(IF+IH)净空变动 {big_chg:+d} 手，中盘(IC) {ic_chg:+d} 手，小盘(IM) {im_chg:+d} 手，风格分化相对温和。")
+    return "；".join(notes)
+
+
+def _fetch_sh_pct_for_date(target_date: str | None) -> float | None:
+    """获取指定历史交易日上证指数真实涨跌幅，保证中信席位与同日现货严格对齐。"""
+    if not target_date:
+        return None
+    try:
+        import urllib.request, json
+        u = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh000001,day,,,15,qfq"
+        with urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"}), timeout=4) as r:
+            d = json.loads(r.read().decode("utf-8")).get("data", {}).get("sh000001", {})
+            rows = d.get("day") or d.get("qfqday") or []
+            for i in range(1, len(rows)):
+                if rows[i][0] == target_date:
+                    prev_c = float(rows[i - 1][2])
+                    curr_c = float(rows[i][2])
+                    if prev_c > 0:
+                        return round((curr_c - prev_c) / prev_c * 100.0, 2)
+    except Exception:
+        pass
+    return None
+
+
 def fetch_cffex_dashboard(
     trade_date: str | None = None,
     spot_chg_pct: float = 0.0,
@@ -368,15 +467,34 @@ def fetch_cffex_dashboard(
     """汇总四大期指基差、中信席位持仓与中信席位行为判别器三件套。"""
     basis = fetch_cffex_basis()
     citic = fetch_citic_positions(trade_date=trade_date)
-    net_short_chg = citic.get("net_short_chg", 0)
-    behavior = discriminate_citic_behavior(
-        citic_net_short_chg=net_short_chg,
-        spot_chg_pct=spot_chg_pct,
-        market_turnover_delta_pct=market_turnover_delta_pct,
-    )
+
+    if citic.get("status") == "degraded":
+        behavior = {
+            "behavior_tag": "席位数据降级（未判定）",
+            "macro_verdict": "N/A（席位接口未返回）",
+            "evidence_line": citic.get("note", "中金所席位数据不可用，禁止基于全 0 做行为推断"),
+            "confidence": "DEGRADED",
+        }
+    else:
+        net_short_chg = citic.get("net_short_chg", 0)
+        # 若席位日期早于今日（如盘中取 T-1 盘后龙虎榜），自动对齐该交易日真实现货涨跌幅
+        citic_dt = citic.get("trade_date")
+        today_str = date.today().strftime("%Y-%m-%d")
+        effective_spot = spot_chg_pct
+        if citic_dt and citic_dt < today_str:
+            hist_pct = _fetch_sh_pct_for_date(citic_dt)
+            if hist_pct is not None:
+                effective_spot = hist_pct
+        behavior = discriminate_citic_behavior(
+            citic_net_short_chg=net_short_chg,
+            spot_chg_pct=effective_spot,
+            market_turnover_delta_pct=market_turnover_delta_pct,
+        )
+
     return {
         **basis,
         "citic_positions": citic,
         "citic_behavior": behavior,
-        "cffex_trade_date": trade_date or basis.get("expiry_date"),
+        "style_divergence": _analyze_style_divergence(citic),
+        "cffex_trade_date": citic.get("trade_date") or trade_date or "N/A",
     }

@@ -68,6 +68,16 @@ def is_trade_date(date_str: str) -> bool:
     return date_str in _trading_days_set()
 
 
+def get_recent_trade_dates(count: int = 10, up_to: str = None) -> list:
+    """
+    返回截至 up_to（含）最近的 count 个交易日列表（按日期升序，格式 'YYYY-MM-DD'）
+    """
+    if up_to is None:
+        up_to = datetime.now().strftime("%Y-%m-%d")
+    days = sorted(d for d in _trading_days_set() if d <= up_to)
+    return days[-count:] if count > 0 else days
+
+
 def is_trading_time(dt: datetime = None) -> tuple:
     """
     判断当前或指定时刻是否处于盘中交易时段
@@ -78,14 +88,14 @@ def is_trading_time(dt: datetime = None) -> tuple:
     返回:
         tuple(bool, int, str):
           - is_trading: 是否处于盘中交易时段
-          - remaining_minutes: 距收盘剩余分钟数（非交易时返回 240）
+          - elapsed_minutes: 当日已开盘交易分钟数（盘前 0，上午 1~120，午休 120，下午 121~240，盘后/休市 240）
           - status: 状态描述字符串
-            'holiday_closed'  - 非交易日休市
-            'pre_market'      - 交易日盘前（09:30 之前）
-            'morning_session' - 上午盘中（09:30 ~ 11:30）
-            'lunch_break'     - 午间休市（11:30 ~ 13:00）
+            'holiday_closed'    - 非交易日休市
+            'pre_market'        - 交易日盘前（09:30 之前）
+            'morning_session'   - 上午盘中（09:30 ~ 11:30）
+            'lunch_break'       - 午间休市（11:30 ~ 13:00）
             'afternoon_session' - 下午盘中（13:00 ~ 15:00）
-            'post_market'     - 交易日盘后（15:00 之后）
+            'post_market'       - 交易日盘后（15:00 之后）
     """
     if dt is None:
         dt = datetime.now()
@@ -106,16 +116,12 @@ def is_trading_time(dt: datetime = None) -> tuple:
 
     # 盘前
     if current_time < morning_open:
-        return (False, 240, "pre_market")
+        return (False, 0, "pre_market")
 
     # 上午盘中: 09:30 ~ 11:30
     if morning_open <= current_time < morning_close:
-        # 上午剩余分钟 + 下午 120 分钟
-        morning_elapsed = (
-            (dt.hour - 9) * 60 + dt.minute - 30
-        )
-        remaining = (120 - morning_elapsed) + 120
-        return (True, remaining, "morning_session")
+        morning_elapsed = max(1, (dt.hour - 9) * 60 + dt.minute - 30)
+        return (True, morning_elapsed, "morning_session")
 
     # 午间休市: 11:30 ~ 13:00
     if morning_close <= current_time < afternoon_open:
@@ -124,8 +130,8 @@ def is_trading_time(dt: datetime = None) -> tuple:
     # 下午盘中: 13:00 ~ 15:00
     if afternoon_open <= current_time < afternoon_close:
         afternoon_elapsed = (dt.hour - 13) * 60 + dt.minute
-        remaining = 120 - afternoon_elapsed
-        return (True, remaining, "afternoon_session")
+        elapsed = min(240, 120 + max(1, afternoon_elapsed))
+        return (True, elapsed, "afternoon_session")
 
     # 盘后: 15:00 之后
-    return (False, 0, "post_market")
+    return (False, 240, "post_market")

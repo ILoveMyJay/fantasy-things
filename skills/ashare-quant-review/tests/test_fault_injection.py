@@ -87,12 +87,44 @@ class TestFaultInjection(unittest.TestCase):
         self.assertFalse(if_row["is_extreme_oversold_signal"])
 
     def test_tc_flt_06_akshare_missing_graceful_degradation(self):
-        """TC-FLT-06: 运行环境缺失 akshare 优雅降级测试"""
+        """TC-FLT-06: 运行环境缺失 akshare 优雅降级测试，且行为判别器不得伪造 MEDIUM 置信度"""
         with patch.dict("sys.modules", {"akshare": None}):
             res = fetch_cffex.fetch_citic_positions(trade_date="20261118")
             self.assertEqual(res["status"], "degraded")
             self.assertEqual(res["IF"]["total_long"], 0)
             self.assertEqual(res["net_short_chg"], 0)
+            dash = fetch_cffex.fetch_cffex_dashboard(trade_date="20261118")
+            self.assertEqual(dash["citic_behavior"]["confidence"], "DEGRADED")
+
+    def test_tc_reg_01_intraday_elapsed_minutes_not_remaining(self):
+        """回归测试：盘中时段必须返回已开盘分钟数而非剩余分钟数"""
+        # 2026-11-26 为交易日
+        morning_dt = datetime.datetime(2026, 11, 26, 10, 30, 0)
+        is_tr, elapsed, phase = is_trading_time(morning_dt)
+        self.assertTrue(is_tr)
+        self.assertEqual(elapsed, 60)
+        self.assertEqual(phase, "morning_session")
+
+        afternoon_dt = datetime.datetime(2026, 11, 26, 13, 17, 0)
+        is_tr2, elapsed2, phase2 = is_trading_time(afternoon_dt)
+        self.assertTrue(is_tr2)
+        self.assertEqual(elapsed2, 137)
+        self.assertEqual(phase2, "afternoon_session")
+
+        post_dt = datetime.datetime(2026, 11, 26, 15, 5, 0)
+        is_tr3, elapsed3, phase3 = is_trading_time(post_dt)
+        self.assertFalse(is_tr3)
+        self.assertEqual(elapsed3, 240)
+        self.assertEqual(phase3, "post_market")
+
+    def test_tc_reg_02_cffex_basis_no_hardcoded_fake_prices(self):
+        """回归测试：期指行情接口故障时必须返回 None，绝不返回 4010.4 等硬编码假价"""
+        with patch("urllib.request.urlopen", side_effect=HTTPError("url", 502, "Bad Gateway", {}, None)):
+            res = fetch_cffex.fetch_cffex_basis()
+            for k in ("IF", "IC", "IM", "IH"):
+                self.assertIsNone(res["basis_table"][k]["futures_price"])
+                self.assertIsNone(res["basis_table"][k]["spot_price"])
+                self.assertIsNone(res["basis_table"][k]["basis"])
 
     def test_tc_rec_03_true_median_vs_sample_bias(self):
         """TC-REC-03: 全市场真中位数与前 100 采样偏差校正验证"""
