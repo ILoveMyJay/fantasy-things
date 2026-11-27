@@ -42,15 +42,22 @@ HEADERS_EM = {
 }
 
 
-def get_front_contract_info(dt: Optional[datetime.datetime] = None) -> Tuple[str, str, int]:
-    """计算当月主力合约后缀(YYMM)、交割日(每月第三个周五)及剩余自然日"""
+def get_front_contract_info(
+    dt: Optional[datetime.datetime] = None,
+    roll_days: int = 5,
+) -> Tuple[str, str, int]:
+    """
+    计算主力参考合约后缀(YYMM)、交割日(每月第三个周五)及剩余自然日。
+    v2 净化机制：当距当月交割日 <= roll_days (默认5个自然日) 时，自动提前滚仓至次月合约，
+    彻底消除交割周因分母趋零导致的年化基差失真（如 -328% 极端假贴水）。
+    """
     if dt is None:
         dt = datetime.datetime.now()
     first_day = datetime.date(dt.year, dt.month, 1)
     first_friday = 1 + (4 - first_day.weekday()) % 7
     third_friday = datetime.date(dt.year, dt.month, first_friday + 14)
 
-    if dt.date() > third_friday:
+    if (third_friday - dt.date()).days <= roll_days:
         target_year = dt.year + 1 if dt.month == 12 else dt.year
         target_month = 1 if dt.month == 12 else dt.month + 1
         fd_next = datetime.date(target_year, target_month, 1)
@@ -63,6 +70,85 @@ def get_front_contract_info(dt: Optional[datetime.datetime] = None) -> Tuple[str
     return suffix, expiry_date.strftime("%Y-%m-%d"), days
 
 
+def backfill_cffex_basis(days: int = 140, db_path: Optional[Path] = None) -> int:
+    """
+    通过新浪期货日K + 现货指数日K回填近 N 个交易日的纯净 IF/IH/IC/IM 滚仓年化基差，
+    用于支撑 v2 120日滚动分位计算（零未来数据）。
+    """
+    trade_dates = _get_recent_trade_dates(limit=days + 5)
+    if not trade_dates:
+        return 0
+    target_dates = trade_dates[-days:]
+
+    # 收集期间涉及的所有合约后缀（采用 roll_days=5 滚仓规则）
+    date_meta: Dict[str, Tuple[str, str, int]] = {}
+    needed_suffixes = set()
+    for d in target_dates:
+        dt_obj = datetime.datetime.strptime(d, "%Y-%m-%d")
+        suf, exp_s, rem = get_front_contract_info(dt_obj, roll_days=5)
+        date_meta[d] = (suf, exp_s, rem)
+        needed_suffixes.add(suf)
+
+    spot_code_map = {"IF": "sh000300", "IH": "sh000016", "IC": "sh000905", "IM": "sh000852"}
+    spot_lookup: Dict[Tuple[str, str], float] = {}
+    for sym, scode in spot_code_map.items():
+        try:
+            sdf = ak.stock_zh_index_daily(symbol=scode)
+            if sdf is not None and not sdf.empty:
+                sdf["date"] = pd.to_datetime(sdf["date"]).dt.strftime("%Y-%m-%d")
+                for _, r in sdf[sdf["date"] >= target_dates[0]].iterrows():
+                    spot_lookup[(sym, str(r["date"]))] = float(r["close"])
+        except Exception:
+            continue
+
+    fut_lookup: Dict[Tuple[str, str], float] = {}
+    for sym in ("IF", "IH", "IC", "IM"):
+        for suf in sorted(needed_suffixes):
+            contract = f"{sym}{suf}"
+            try:
+                fdf = ak.futures_zh_daily_sina(symbol=contract)
+                if fdf is not None and not fdf.empty:
+                    fdf["date"] = pd.to_datetime(fdf["date"]).dt.strftime("%Y-%m-%d")
+                    for _, r in fdf[fdf["date"] >= target_dates[0]].iterrows():
+                        fut_lookup[(contract, str(r["date"]))] = float(r["close"])
+            except Exception:
+                continue
+
+    rows = []
+    inserted_dates = set()
+    for d in target_dates:
+        suf, _, rem = date_meta[d]
+        for sym in ("IF", "IH", "IC", "IM"):
+            contract = f"{sym}{suf}"
+            f_px = fut_lookup.get((contract, d))
+            s_px = spot_lookup.get((sym, d))
+            if f_px is None or s_px is None or s_px <= 0:
+                continue
+            basis = round(f_px - s_px, 2)
+            ann = round((basis / s_px) * (365.0 / rem) * 100.0, 2)
+            rows.append(
+                {
+                    "trade_date": d,
+                    "symbol": sym,
+                    "contract": contract,
+                    "futures_price": round(f_px, 2),
+                    "spot_price": round(s_px, 2),
+                    "basis": basis,
+                    "annualized_discount_pct": ann,
+                    "days_to_expiry": rem,
+                }
+            )
+            inserted_dates.add(d)
+
+    if rows:
+        conn = get_conn(db_path)
+        try:
+            upsert_cffex_basis(conn, rows)
+        finally:
+            conn.close()
+    return len(inserted_dates)
+
+
 def _get_recent_trade_dates(limit: int = 30) -> List[str]:
     url = (
         f"https://push2his.eastmoney.com/api/qt/stock/kline/get?"
@@ -70,16 +156,34 @@ def _get_recent_trade_dates(limit: int = 30) -> List[str]:
     )
     try:
         req = urllib.request.Request(url, headers=HEADERS_EM)
-        with urllib.request.urlopen(req, timeout=5) as r:
+        with urllib.request.urlopen(req, timeout=4) as r:
             klines = (json.loads(r.read().decode("utf-8")).get("data") or {}).get("klines") or []
-            return [k.split(",")[0] for k in klines]
+            if klines:
+                return [k.split(",")[0] for k in klines]
     except Exception:
-        return []
+        pass
+    # 新浪备源（规避东财 WAF）
+    try:
+        df = ak.stock_zh_index_daily(symbol="sh000001")
+        if df is not None and not df.empty:
+            dates = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d").sort_values().tolist()
+            return dates[-limit:]
+    except Exception:
+        pass
+    return []
 
 
-def fetch_cffex_basis_signal(db_path: Optional[Path] = None) -> Dict[str, Any]:
-    """抓取 IF/IH/IC/IM 当月主力基差、年化贴水率与上证50(IH)相对强弱"""
-    suffix, expiry_str, days = get_front_contract_info()
+def fetch_cffex_basis_signal(
+    db_path: Optional[Path] = None,
+    auto_backfill_days: int = 140,
+) -> Dict[str, Any]:
+    """
+    抓取 IF/IH/IC/IM 纯净滚仓合约基差、年化贴水率与 120 日滚动分位（v2 去偏引擎）。
+    1. 交割前 <= 5 个自然日自动提前切换次月合约，消除交割周分母趋零爆表（如 -328%）。
+    2. 对 IF 纯净年化基差计算 120 日因果滚动分位：>=75%分位 -> BULL，<=15%分位 -> BEAR，其余 NEUTRAL，
+       彻底消除 A 股常态对冲贴水 (-3%~-8%) 导致的永熊偏置。
+    """
+    suffix, expiry_str, days = get_front_contract_info(roll_days=5)
     futures_symbols = [f"CFF_RE_{p}{suffix}" for p in ("IF", "IH", "IC", "IM")]
     spot_symbols = ["sh000300", "sh000016", "sh000905", "sh000852"]
 
@@ -176,33 +280,63 @@ def fetch_cffex_basis_signal(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
     conn = get_conn(db_path)
     try:
-        upsert_cffex_basis(conn, db_rows)
-        hist = fetch_cffex_history(conn, days=20)
+        cur = conn.execute("SELECT COUNT(DISTINCT trade_date) FROM daily_cffex_basis WHERE symbol='IF'")
+        existing_if_days = int(cur.fetchone()[0])
     finally:
         conn.close()
 
-    # 计算 5 日基差变化趋势（若本地有历史）
-    if_hist = [r["annualized_discount_pct"] for r in hist if r["symbol"] == "IF" and r.get("annualized_discount_pct") is not None]
+    if existing_if_days < 40 and auto_backfill_days > 0:
+        try:
+            backfill_cffex_basis(days=auto_backfill_days, db_path=db_path)
+        except Exception:
+            pass
+
+    conn = get_conn(db_path)
+    try:
+        upsert_cffex_basis(conn, db_rows)
+        hist = fetch_cffex_history(conn, days=125)
+    finally:
+        conn.close()
+
+    # 过滤交割周残余历史脏值（days_to_expiry <= 5）并按近 120 交易日计算因果分位
+    if_hist_rows = [
+        r for r in hist
+        if r["symbol"] == "IF"
+        and r.get("annualized_discount_pct") is not None
+        and (r.get("days_to_expiry") is None or r.get("days_to_expiry") > 5)
+    ][-120:]
+    if_hist = [float(r["annualized_discount_pct"]) for r in if_hist_rows]
     if_ann = table["IF"]["annualized_discount_pct"]
     ih_ann = table["IH"]["annualized_discount_pct"]
-    im_ann = table["IM"]["annualized_discount_pct"]
 
-    # 综合判定：贴水率是否深度走阔 + 蓝筹(IH)是否领先小盘(IM)
     ih_vs_im_chg = (
         round(spot_chg["IH"] - spot_chg["IM"], 2)
         if "IH" in spot_chg and "IM" in spot_chg
         else None
     )
+
+    if_pct_rank_120: Optional[float] = None
     if if_ann is None:
         sig, note = "NEUTRAL", "IF 基差缺失"
-    elif if_ann <= -15.0 or (ih_ann is not None and ih_ann <= -15.0):
-        sig, note = "BEAR", f"大盘期指深度贴水(IF {if_ann}% / IH {ih_ann}%)，大资金对冲/看空意愿强烈"
-    elif if_ann >= 2.0 and (ih_ann is None or ih_ann >= 0.0):
-        sig, note = "BULL", f"大盘期指转升水(IF {if_ann:+.2f}%)，大资金主动做多意愿增强"
-    elif if_ann <= -5.0:
-        sig, note = "BEAR_MILD", f"大盘期指持续贴水(IF {if_ann}%)，资金偏谨慎"
+    elif len(if_hist) >= 40:
+        if_pct_rank_120 = round(sum(1 for x in if_hist if x <= if_ann) / len(if_hist) * 100.0, 1)
+        if if_pct_rank_120 >= 75.0:
+            sig = "BULL"
+            note = f"纯净 IF 年化基差 {if_ann:+.2f}% 位于近 {len(if_hist)} 日 {if_pct_rank_120}% 高分位（≥75%），大资金升水/做多预期显著转强"
+        elif if_pct_rank_120 <= 15.0:
+            sig = "BEAR"
+            note = f"纯净 IF 年化基差 {if_ann:+.2f}% 跌至近 {len(if_hist)} 日 {if_pct_rank_120}% 极低分位（≤15%），深度贴水对冲压力大"
+        else:
+            sig = "NEUTRAL"
+            note = f"纯净 IF 年化基差 {if_ann:+.2f}% 处于近 {len(if_hist)} 日 {if_pct_rank_120}% 中性分位（15%~75%正常对冲带）"
     else:
-        sig, note = "NEUTRAL", f"期指基差处于正常区间(IF {if_ann:+.2f}%)"
+        # 样本不足 40 天时的保守冷启动规则（避免对 -5% 常态贴水误判熊市）
+        if if_ann >= 2.0 and (ih_ann is None or ih_ann >= 0.0):
+            sig, note = "BULL", f"IF 显著升水({if_ann:+.2f}%)，冷启动样本 {len(if_hist)} 日"
+        elif if_ann <= -18.0:
+            sig, note = "BEAR", f"IF 深度贴水({if_ann:+.2f}%)，冷启动样本 {len(if_hist)} 日"
+        else:
+            sig, note = "NEUTRAL", f"IF 基差 {if_ann:+.2f}% 位于正常对冲带（历史样本 {len(if_hist)} 日，满40日启用120D分位）"
 
     return {
         "status": "OK",
@@ -213,6 +347,7 @@ def fetch_cffex_basis_signal(db_path: Optional[Path] = None) -> Dict[str, Any]:
         "basis_table": table,
         "ih_vs_im_spot_diff_pp": ih_vs_im_chg,
         "if_history_days": len(if_hist),
+        "if_ann_pct_rank_120": if_pct_rank_120,
         "signal": sig,
         "note": note,
     }
@@ -343,8 +478,8 @@ def evaluate_pcr_resonance(
     }
 
 
-def fetch_option_pcr_signal(db_path: Optional[Path] = None, auto_backfill_days: int = 20) -> Dict[str, Any]:
-    """拉取并评估全市场 50/300/500/双创期权 PCR"""
+def fetch_option_pcr_signal(db_path: Optional[Path] = None, auto_backfill_days: int = 60) -> Dict[str, Any]:
+    """拉取并评估全市场 50/300/500/双创期权 PCR（v2 使用近 60 日滚动窗口）"""
     conn = get_conn(db_path)
     try:
         cur = conn.execute("SELECT COUNT(DISTINCT trade_date) FROM daily_option_pcr")
@@ -352,11 +487,11 @@ def fetch_option_pcr_signal(db_path: Optional[Path] = None, auto_backfill_days: 
     finally:
         conn.close()
 
-    backfill_option_pcr(days=auto_backfill_days if existing_days < 15 else 3, db_path=db_path)
+    backfill_option_pcr(days=auto_backfill_days if existing_days < 45 else 3, db_path=db_path)
 
     conn = get_conn(db_path)
     try:
-        hist = fetch_option_pcr_history(conn, days=80)
+        hist = fetch_option_pcr_history(conn, days=65)
     finally:
         conn.close()
 
@@ -369,7 +504,7 @@ def fetch_option_pcr_signal(db_path: Optional[Path] = None, auto_backfill_days: 
     g_300 = df[df["underlying_code"].isin(["510300", "159919"])].groupby("trade_date")[["put_vol", "call_vol"]].sum()
     g_all = df.groupby("trade_date")[["put_vol", "call_vol", "put_oi", "call_oi"]].sum()
 
-    common_dates = sorted(set(g_50.index) & set(g_300.index) & set(g_all.index))
+    common_dates = sorted(set(g_50.index) & set(g_300.index) & set(g_all.index))[-60:]
     if not common_dates:
         return {"status": "ERROR", "error": "50/300 期权共同交易日为空"}
 
@@ -387,9 +522,9 @@ def fetch_option_pcr_signal(db_path: Optional[Path] = None, auto_backfill_days: 
     return res
 
 
-def fetch_derivatives_dashboard(db_path: Optional[Path] = None, auto_backfill_days: int = 20) -> Dict[str, Any]:
+def fetch_derivatives_dashboard(db_path: Optional[Path] = None, auto_backfill_days: int = 60) -> Dict[str, Any]:
     return {
-        "cffex_basis": fetch_cffex_basis_signal(db_path=db_path),
+        "cffex_basis": fetch_cffex_basis_signal(db_path=db_path, auto_backfill_days=140),
         "option_pcr": fetch_option_pcr_signal(db_path=db_path, auto_backfill_days=auto_backfill_days),
     }
 
@@ -399,9 +534,13 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="股指期货升贴水与官方期权PCR抓取")
     parser.add_argument("--backfill-pcr", type=int, default=0, help="回填近N日官方期权PCR")
+    parser.add_argument("--backfill-cffex", type=int, default=0, help="回填近N日纯净期指基差")
     args = parser.parse_args()
     if args.backfill_pcr > 0:
         n = backfill_option_pcr(days=args.backfill_pcr)
         print(f"Backfilled {n} trading days of SSE/SZSE option PCR.")
+    elif args.backfill_cffex > 0:
+        n = backfill_cffex_basis(days=args.backfill_cffex)
+        print(f"Backfilled {n} trading days of clean CFFEX basis.")
     else:
         print(json.dumps(fetch_derivatives_dashboard(), ensure_ascii=False, indent=2))

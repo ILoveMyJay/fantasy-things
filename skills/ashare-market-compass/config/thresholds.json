@@ -1,5 +1,6 @@
 {
-  "description": "ashare-market-compass 透明白盒阈值与四态仲裁配置（布鲁斯四层体系公开复刻版）",
+  "description": "ashare-market-compass v2 透明白盒阈值与趋势锚定四态仲裁配置（消除永熊偏置 + 精简失效因子）",
+  "version": "2.0",
   "breadth_trin": {
     "top_divergence": {
       "adv_ratio_min": 70.0,
@@ -30,22 +31,24 @@
     "upper_band": 70.0,
     "fast_span": 5,
     "slow_span": 20,
-    "norm_window": 120
+    "norm_window": 120,
+    "mode": "conditional_bottom_booster_only",
+    "note": "宽基ETF申赎具有天然左侧逆势属性，v2仅在 >=70轨 且 日K技术面转多 时激活底部共振加分，不再对牛市上涨期赎回做空头惩罚"
   },
   "erp_bands": {
     "rolling_window_days": 750,
-    "bull_sigma": 1.0,
+    "bull_mild_sigma": 0.8,
     "extreme_bottom_sigma": 1.5,
-    "bear_sigma": -1.0
-  },
-  "equal_weight_pe": {
-    "high_quantile": 0.70,
-    "low_quantile": 0.30
+    "bear_mild_sigma": -1.2,
+    "asymmetric": true
   },
   "cffex_basis": {
-    "deep_discount_annualized_pct": -15.0,
-    "extreme_discount_annualized_pct": -25.0,
-    "premium_bullish_pct": 2.0
+    "roll_days_before_expiry": 5,
+    "rolling_pct_window": 120,
+    "bull_pct_rank": 75.0,
+    "bear_pct_rank": 15.0,
+    "fallback_deep_discount_pct": -18.0,
+    "fallback_premium_bullish_pct": 2.0
   },
   "option_pcr": {
     "smoothing_span": 5,
@@ -55,6 +58,7 @@
     "require_50_300_resonance": true
   },
   "decision_arbitration": {
-    "rule": "资金面定大势方向，技术面定入场时机；大势与小势冲突时强制输出 准备多 / 准备空（零仓位等待共振）"
+    "architecture": "v2_trend_anchored_debiased_confirmation",
+    "rule": "周K技术面(一目均衡表+VW-MACD)定主趋势轴，日K技术面定时机阀，去偏确认分(ERP非对称估值 + 50/300期权PCR + 纯净IF基差120日分位 + 条件宽基ETF底部加分)负责顶部预警与底部反转共振"
   }
 }

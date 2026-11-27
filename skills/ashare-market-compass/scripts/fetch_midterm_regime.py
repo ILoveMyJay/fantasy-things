@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-fetch_midterm_regime.py - 中期资金面与估值层引擎
+fetch_midterm_regime.py - 中期资金面与估值层引擎 (Compass v2 精简去偏版)
 覆盖：
-1. 股债息差 (ERP) + 滚动3年标准差上下轨
-2. 全A等权PE (middlePETTM / averagePETTM + 10年分位)
-3. 19只主流宽基ETF「真实份额变化 + 加权加仓指数 (30/70轨)」
-4. 高管与重要股东近30/60日净增减持统计
-5. 中债国债收益率曲线 + Shibor + 恒生国企(HSCEI)先行速率
+1. 股债息差 (ERP) + 滚动3年标准差非对称估值轨（低估强确认，高估仅温和警示，消除永熊拖累）
+2. 19只主流宽基ETF「真实份额变化 + 加权加仓指数 (30/70轨)」（v2 中仅作底部右侧条件加分项）
+3. 中债国债收益率曲线 + Shibor（纯流动性参考背景，不参与投票）
+已于 v2 彻底移除（经 2 年零未来数据盲测证伪/共线失效）：
+- 高管/重要股东增减持、全A等权PE、恒生国企(HSCEI)先行速率
 严守零造假原则：接口失败返回 None，绝不填充虚假默认值。
 """
 
@@ -71,6 +71,18 @@ def _fetch_em_kline_close_map(secid: str, limit: int = 160) -> Dict[str, float]:
                     return out
         except Exception:
             time.sleep(0.3 * (attempt + 1))
+    # 新浪备源（针对上证指数日期列表）
+    if secid == "1.000001":
+        try:
+            sdf = ak.stock_zh_index_daily(symbol="sh000001")
+            if sdf is not None and not sdf.empty:
+                sdf = sdf.tail(limit)
+                return {
+                    pd.to_datetime(r["date"]).strftime("%Y-%m-%d"): float(r["close"])
+                    for _, r in sdf.iterrows()
+                }
+        except Exception:
+            pass
     return {}
 
 
@@ -101,11 +113,11 @@ def fetch_erp_signal(window: int = 750) -> Dict[str, Any]:
         if zscore >= 1.5:
             signal, note = "BULL", "触发标准差上轨(+1.5σ以上)，历史级底部价值深坑"
         elif zscore >= 0.8:
-            signal, note = "BULL_MILD", "逼近标准差上轨，估值性价比显著提升"
-        elif zscore <= -1.0:
-            signal, note = "BEAR", "跌破标准差下轨(-1.0σ以下)，高估顶部风险区"
+            signal, note = "BULL_MILD", "逼近标准差上轨(+0.8σ以上)，估值性价比显著提升"
+        elif zscore <= -1.2:
+            signal, note = "BEAR_MILD", "跌破下轨(-1.2σ以下)，估值偏高温和警示（v2非对称：不作强空打压）"
         else:
-            signal, note = "NEUTRAL", "位于中轨附近，距标准差上轨仍有空间（未到极限冰点）"
+            signal, note = "NEUTRAL", "位于中轨附近，距标准差上轨仍有空间（中性无拖累）"
 
         return {
             "status": "OK",
@@ -122,58 +134,6 @@ def fetch_erp_signal(window: int = 750) -> Dict[str, Any]:
         }
     except Exception as e:
         return {"status": "ERROR", "error": f"ERP 获取失败: {e}"}
-
-
-def fetch_equal_weight_pe() -> Dict[str, Any]:
-    """全A等权市盈率 (middlePETTM / averagePETTM 及近10年分位)"""
-    try:
-        df = ak.stock_a_ttm_lyr()
-        if df is None or df.empty:
-            return {"status": "ERROR", "error": "stock_a_ttm_lyr 返回空数据"}
-        df = df.copy()
-        df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
-        df = df.sort_values("date")
-        valid = df.dropna(subset=["middlePETTM"])
-        if valid.empty:
-            return {"status": "ERROR", "error": "无有效 PE 数据"}
-        last = valid.iloc[-1]
-        q_mid_10y = last.get("quantileInRecent10YearsMiddlePeTtm")
-        q_avg_10y = last.get("quantileInRecent10YearsAveragePeTtm")
-        q_mid_pct = round(float(q_mid_10y) * 100.0, 2) if pd.notna(q_mid_10y) else None
-        q_avg_pct = round(float(q_avg_10y) * 100.0, 2) if pd.notna(q_avg_10y) else None
-
-        # 若最新行分位缺失，退用最近有分位的记录
-        if q_mid_pct is None:
-            q_valid = valid.dropna(subset=["quantileInRecent10YearsMiddlePeTtm"])
-            if not q_valid.empty:
-                q_mid_pct = round(float(q_valid.iloc[-1]["quantileInRecent10YearsMiddlePeTtm"]) * 100.0, 2)
-        if q_avg_pct is None:
-            q_valid = valid.dropna(subset=["quantileInRecent10YearsAveragePeTtm"])
-            if not q_valid.empty:
-                q_avg_pct = round(float(q_valid.iloc[-1]["quantileInRecent10YearsAveragePeTtm"]) * 100.0, 2)
-
-        ref_q = q_mid_pct if q_mid_pct is not None else q_avg_pct
-        if ref_q is None:
-            signal, note = "NEUTRAL", "历史分位缺失"
-        elif ref_q >= 70.0:
-            signal, note = "BEAR", f"中位数PE处于近10年高位({ref_q}%)，高估区"
-        elif ref_q <= 30.0:
-            signal, note = "BULL", f"中位数PE处于近10年低位({ref_q}%)，低估安全区"
-        else:
-            signal, note = "NEUTRAL", f"估值处于近10年中间区({ref_q}%)"
-
-        return {
-            "status": "OK",
-            "trade_date": str(last["date"]),
-            "median_pe_ttm": round(float(last["middlePETTM"]), 2),
-            "avg_pe_ttm": round(float(last["averagePETTM"]), 2) if pd.notna(last.get("averagePETTM")) else None,
-            "median_pe_10y_pct": q_mid_pct,
-            "avg_pe_10y_pct": q_avg_pct,
-            "signal": signal,
-            "note": note,
-        }
-    except Exception as e:
-        return {"status": "ERROR", "error": f"全A等权PE获取失败: {e}"}
 
 
 def _fetch_szse_etf_shares_today() -> Optional[pd.DataFrame]:
@@ -443,79 +403,8 @@ def fetch_etf_19_signal(db_path: Optional[Path] = None, auto_backfill_days: int 
     }
 
 
-def fetch_insider_trading_pressure(days: int = 30) -> Dict[str, Any]:
-    """抓取东财数据中心最新高管/重要股东增减持，统计近 30 日增持 vs 减持家次与估算金额"""
-    url_base = "https://datacenter-web.eastmoney.com/api/data/v1/get"
-    cutoff = (datetime.date.today() - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
-    records = []
-    try:
-        for page in range(1, 5):
-            params = {
-                "sortColumns": "END_DATE,SECURITY_CODE,EITIME",
-                "sortTypes": "-1,-1,-1",
-                "pageSize": "500",
-                "pageNumber": str(page),
-                "reportName": "RPT_SHARE_HOLDER_INCREASE",
-                "columns": "SECURITY_CODE,SECURITY_NAME_ABBR,END_DATE,DIRECTION,CHANGE_NUM,TRADE_AVERAGE_PRICE,CLOSE_PRICE",
-                "source": "WEB",
-                "client": "WEB",
-            }
-            r = requests.get(url_base, params=params, headers=HEADERS, timeout=6)
-            data = (r.json().get("result") or {}).get("data") or []
-            if not data:
-                break
-            stop = False
-            for row in data:
-                end_dt = str(row.get("END_DATE") or "")[:10]
-                if end_dt < cutoff:
-                    stop = True
-                    continue
-                records.append(row)
-            if stop:
-                break
-
-        if not records:
-            return {"status": "ERROR", "error": "近30日高管增减持记录为空或接口异常"}
-
-        inc_cnt, dec_cnt = 0, 0
-        inc_amt, dec_amt = 0.0, 0.0
-        for row in records:
-            direction = str(row.get("DIRECTION") or "")
-            num = float(row.get("CHANGE_NUM") or 0) * 10000.0  # 东财单位为万股
-            px = float(row.get("TRADE_AVERAGE_PRICE") or row.get("CLOSE_PRICE") or 0)
-            amt_yi = (abs(num) * px) / 1e8 if px > 0 else 0.0
-            if "增持" in direction:
-                inc_cnt += 1
-                inc_amt += amt_yi
-            elif "减持" in direction:
-                dec_cnt += 1
-                dec_amt += amt_yi
-
-        ratio = round(dec_cnt / max(1, inc_cnt), 2)
-        if ratio >= 3.5:
-            signal, note = "BEAR", f"减持/增持家次比高达 {ratio}:1，产业资本抛压沉重"
-        elif ratio <= 1.2:
-            signal, note = "BULL", f"增减持趋于平衡/偏增持({ratio}:1)，产业资本认可底部"
-        else:
-            signal, note = "NEUTRAL", f"近{days}日减持略多于增持({ratio}:1)"
-
-        return {
-            "status": "OK",
-            "window_days": days,
-            "increase_count": inc_cnt,
-            "decrease_count": dec_cnt,
-            "decrease_to_increase_ratio": ratio,
-            "increase_est_yi": round(inc_amt, 2),
-            "decrease_est_yi": round(dec_amt, 2),
-            "signal": signal,
-            "note": note,
-        }
-    except Exception as e:
-        return {"status": "ERROR", "error": f"高管增减持获取失败: {e}"}
-
-
-def fetch_macro_and_hk_leading() -> Dict[str, Any]:
-    """中债国债收益率曲线 + Shibor + 恒生国企(HSCEI)先行速率"""
+def fetch_macro_rates() -> Dict[str, Any]:
+    """中债国债收益率曲线 + Shibor（宏观流动性背景参考，不参与投票）"""
     out: Dict[str, Any] = {"status": "OK"}
 
     # 1. 中债国债收益率曲线
@@ -559,56 +448,14 @@ def fetch_macro_and_hk_leading() -> Dict[str, Any]:
         out["shibor"] = None
         out["shibor_error"] = str(e)
 
-    # 3. 恒生国企 (HSCEI) 先行速率（非裸走势叠加，测算 20日/60日动量速率与相对强弱）
-    try:
-        hscei_map = _fetch_em_kline_close_map("100.HSCEI", limit=80)
-        sh300_map = _fetch_em_kline_close_map("1.000300", limit=80)
-        hs_dates = sorted(hscei_map.keys())
-        if len(hs_dates) >= 21:
-            hs_s = pd.Series([hscei_map[d] for d in hs_dates], index=hs_dates)
-            ret_5 = round((hs_s.iloc[-1] / hs_s.iloc[-6] - 1.0) * 100.0, 2)
-            ret_20 = round((hs_s.iloc[-1] / hs_s.iloc[-21] - 1.0) * 100.0, 2)
-            ret_60 = round((hs_s.iloc[-1] / hs_s.iloc[-61] - 1.0) * 100.0, 2) if len(hs_s) >= 61 else None
-            # 相对强弱（HSCEI 20日涨幅 - 沪深300 20日涨幅）
-            sh_dates = sorted(sh300_map.keys())
-            sh_ret_20 = (
-                round((sh300_map[sh_dates[-1]] / sh300_map[sh_dates[-21]] - 1.0) * 100.0, 2)
-                if len(sh_dates) >= 21
-                else None
-            )
-            rel_20 = round(ret_20 - sh_ret_20, 2) if sh_ret_20 is not None else None
-            if ret_20 <= -5.0:
-                hk_sig, hk_note = "BEAR", f"恒生国企20日动量转弱({ret_20:+.2f}%)，先行信号偏空"
-            elif ret_20 >= 5.0:
-                hk_sig, hk_note = "BULL", f"恒生国企20日动量走强({ret_20:+.2f}%)，外资定价权先行转暖"
-            else:
-                hk_sig, hk_note = "NEUTRAL", f"恒生国企20日震荡({ret_20:+.2f}%)"
-            out["hk_leading"] = {
-                "trade_date": hs_dates[-1],
-                "hscei_close": round(float(hs_s.iloc[-1]), 2),
-                "ret_5d_pct": ret_5,
-                "ret_20d_pct": ret_20,
-                "ret_60d_pct": ret_60,
-                "rel_vs_csi300_20d_pp": rel_20,
-                "signal": hk_sig,
-                "note": hk_note,
-            }
-        else:
-            out["hk_leading"] = None
-    except Exception as e:
-        out["hk_leading"] = None
-        out["hk_leading_error"] = str(e)
-
     return out
 
 
 def fetch_midterm_dashboard(db_path: Optional[Path] = None, auto_backfill_days: int = 25) -> Dict[str, Any]:
     return {
         "erp": fetch_erp_signal(),
-        "equal_weight_pe": fetch_equal_weight_pe(),
         "etf_19_accumulation": fetch_etf_19_signal(db_path=db_path, auto_backfill_days=auto_backfill_days),
-        "insider_trading": fetch_insider_trading_pressure(days=30),
-        "macro_and_hk": fetch_macro_and_hk_leading(),
+        "macro_rates": fetch_macro_rates(),
     }
 
 

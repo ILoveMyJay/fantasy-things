@@ -317,7 +317,7 @@ def compute_mcl_series(history_rows: List[Dict[str, Any]]) -> Dict[str, Optional
 
 
 def _detect_trade_date() -> str:
-    """用上证指数最新日K确定当前业务交易日"""
+    """用上证指数最新日K确定当前业务交易日（优先东财，自动回退新浪）"""
     url = (
         "https://push2his.eastmoney.com/api/qt/stock/kline/get?"
         "secid=1.000001&fields1=f1&fields2=f51&klt=101&fqt=1&end=20500101&lmt=2"
@@ -330,17 +330,182 @@ def _detect_trade_date() -> str:
                 return klines[-1].split(",")[0]
     except Exception:
         pass
+    try:
+        import akshare as ak
+        df = ak.stock_zh_index_daily(symbol="sh000001")
+        if df is not None and not df.empty:
+            return pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d").max()
+    except Exception:
+        pass
     return datetime.date.today().strftime("%Y-%m-%d")
+
+
+def _fetch_all_a_snapshot_tushare(trade_date: str) -> Tuple[Optional[pd.DataFrame], str]:
+    """东财 WAF 断连时的盘后备源：通过本地 Tushare Pro 拉取全A日线截面（5500+只股票）"""
+    try:
+        import tushare as ts
+        pro = ts.pro_api()
+        base_dt = datetime.datetime.strptime(trade_date, "%Y-%m-%d").date()
+        # 尝试目标日期及前3个自然日（应对当日盘中/刚收盘Tushare尚未入库的情况）
+        for offset in range(4):
+            cand = (base_dt - datetime.timedelta(days=offset)).strftime("%Y-%m-%d")
+            df = pro.daily(trade_date=cand.replace("-", ""))
+            if df is not None and len(df) >= 3000:
+                out = pd.DataFrame(
+                    {
+                        "code": df["ts_code"].astype(str).str.split(".").str[0],
+                        "name": df["ts_code"].astype(str),
+                        "price": pd.to_numeric(df["close"], errors="coerce"),
+                        "pct_chg": pd.to_numeric(df["pct_chg"], errors="coerce"),
+                        "volume": pd.to_numeric(df["vol"], errors="coerce"),
+                        "amount": pd.to_numeric(df["amount"], errors="coerce") * 1000.0,  # 千元 -> 元
+                        "turnover_rate": np.nan,
+                        "pre_close": pd.to_numeric(df["pre_close"], errors="coerce"),
+                    }
+                )
+                return out, cand
+    except Exception as e:
+        sys.stderr.write(f"[fetch_breadth_trin] Tushare fallback failed: {e}\n")
+    return None, trade_date
+
+
+def backfill_breadth_tushare(days: int = 60, db_path: Optional[Path] = None) -> int:
+    """
+    利用本地已配置的 Tushare Pro (`pro.daily(trade_date=...)`) 回填近 N 个交易日的全A拆量宽广度、
+    双口径 TRIN 与 MCL/MSI 历史序列至本地 SQLite，使 MCL(EMA19-EMA39) 立即达到 39 日稳定期。
+    注意：若未安装 tushare 或未配置有效 token，返回 0 而不报错。
+    """
+    try:
+        import tushare as ts
+        pro = ts.pro_api()
+    except Exception as e:
+        sys.stderr.write(f"[fetch_breadth_trin] Tushare unavailable for backfill: {e}\n")
+        return 0
+
+    # 获取近 N 个交易日列表
+    url = (
+        f"https://push2his.eastmoney.com/api/qt/stock/kline/get?"
+        f"secid=1.000001&fields1=f1&fields2=f51&klt=101&fqt=1&end=20500101&lmt={days + 5}"
+    )
+    try:
+        req = urllib.request.Request(url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=6) as r:
+            klines = (json.loads(r.read().decode("utf-8")).get("data") or {}).get("klines") or []
+        trade_dates = [k.split(",")[0] for k in klines][-days:]
+    except Exception:
+        return 0
+
+    if not trade_dates:
+        return 0
+
+    conn = get_conn(db_path)
+    inserted = 0
+    try:
+        existing = {r[0] for r in conn.execute("SELECT trade_date FROM daily_breadth").fetchall()}
+        targets = [d for d in trade_dates if d not in existing]
+        for dt_str in targets:
+            ymd = dt_str.replace("-", "")
+            df = None
+            for attempt in range(4):
+                try:
+                    df = pro.daily(trade_date=ymd)
+                    break
+                except Exception as e:
+                    msg = str(e)
+                    wait = 20 if ("每分钟" in msg or "频率" in msg or "limit" in msg.lower()) else 2 * (attempt + 1)
+                    time.sleep(wait)
+            if df is None or df.empty:
+                continue
+            valid = df[df["amount"].notna() & (df["amount"] > 0) & df["pct_chg"].notna()].copy()
+            if len(valid) < 2000:
+                continue
+            up = valid[valid["pct_chg"] > 0]
+            dn = valid[valid["pct_chg"] < 0]
+            fl = valid[valid["pct_chg"] == 0]
+            up_c, dn_c, fl_c = int(len(up)), int(len(dn)), int(len(fl))
+            valid_c = int(len(valid))
+            tot_amt = float(valid["amount"].sum())  # 千元
+            up_amt = float(up["amount"].sum())
+            dn_amt = float(dn["amount"].sum())
+            tot_vol = float(valid["vol"].fillna(0).sum())
+            up_vol = float(up["vol"].fillna(0).sum())
+            dn_vol = float(dn["vol"].fillna(0).sum())
+
+            adv_ratio = round(up_c / valid_c * 100.0, 2)
+            adv_amt_ratio = round(up_amt / tot_amt * 100.0, 2) if tot_amt > 0 else None
+            adv_vol_ratio = round(up_vol / tot_vol * 100.0, 2) if tot_vol > 0 else None
+            amt_spread = round(adv_amt_ratio - adv_ratio, 2) if adv_amt_ratio is not None else None
+            vol_spread = round(adv_amt_ratio - adv_vol_ratio, 2) if (adv_amt_ratio is not None and adv_vol_ratio is not None) else None
+            trin_amt = round((up_c / dn_c) / (up_amt / dn_amt), 3) if (dn_c > 0 and up_amt > 0 and dn_amt > 0) else None
+            trin_vol = round((up_c / dn_c) / (up_vol / dn_vol), 3) if (dn_c > 0 and up_vol > 0 and dn_vol > 0) else None
+            _, stag = classify_breadth_scenario(adv_ratio, trin_amt, amt_spread)
+
+            row = {
+                "trade_date": dt_str,
+                "captured_at": f"{dt_str} 15:00:00 (tushare)",
+                "valid_count": valid_c,
+                "up_count": up_c,
+                "down_count": dn_c,
+                "flat_count": fl_c,
+                "limit_up": None,
+                "limit_down": None,
+                "total_amount_yi": round(tot_amt / 1e5, 2),
+                "up_amount_yi": round(up_amt / 1e5, 2),
+                "down_amount_yi": round(dn_amt / 1e5, 2),
+                "adv_ratio": adv_ratio,
+                "adv_amt_ratio": adv_amt_ratio,
+                "adv_vol_ratio": adv_vol_ratio,
+                "amt_breadth_spread": amt_spread,
+                "amt_vol_spread": vol_spread,
+                "trin_amount": trin_amt,
+                "trin_volume": trin_vol,
+                "high_turnover_ratio": None,
+                "mcl": None,
+                "msi": None,
+                "adl": None,
+                "adr_10": None,
+                "scenario_tag": stag,
+            }
+            upsert_breadth(conn, row)
+            inserted += 1
+
+        # 重新计算并回写全表历史 MCL / MSI / ADL / ADR_10
+        all_rows = fetch_breadth_history(conn, limit=1000)
+        if all_rows:
+            net_adv = pd.Series([(r["up_count"] - r["down_count"]) for r in all_rows], dtype=float)
+            ups = pd.Series([r["up_count"] for r in all_rows], dtype=float)
+            downs = pd.Series([r["down_count"] for r in all_rows], dtype=float)
+            mcl_s = net_adv.ewm(span=19, adjust=False).mean() - net_adv.ewm(span=39, adjust=False).mean()
+            msi_s = mcl_s.cumsum()
+            adl_s = net_adv.cumsum()
+            for i, r in enumerate(all_rows):
+                w0 = max(0, i - 9)
+                dn_sum = float(downs.iloc[w0:i + 1].sum())
+                adr10 = round(float(ups.iloc[w0:i + 1].sum()) / dn_sum, 3) if dn_sum > 0 else None
+                conn.execute(
+                    "UPDATE daily_breadth SET mcl=?, msi=?, adl=?, adr_10=? WHERE trade_date=?",
+                    (round(float(mcl_s.iloc[i]), 2), round(float(msi_s.iloc[i]), 2), round(float(adl_s.iloc[i]), 1), adr10, r["trade_date"]),
+                )
+            conn.commit()
+    finally:
+        conn.close()
+    return inserted
 
 
 def fetch_breadth_dashboard(save_to_db: bool = True, db_path: Optional[Path] = None) -> Dict[str, Any]:
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     trade_date = _detect_trade_date()
+    data_source = "eastmoney"
     df = fetch_all_a_snapshot()
+    if df is None:
+        df, ts_date = _fetch_all_a_snapshot_tushare(trade_date)
+        if df is not None:
+            trade_date = ts_date
+            data_source = "tushare_daily"
     if df is None:
         return {
             "status": "ERROR",
-            "error": "全A实时/收盘截面接口获取失败（已重试，未填充虚假数据）",
+            "error": "全A实时/收盘截面接口获取失败（东财与Tushare均失败，已重试，未填充虚假数据）",
             "trade_date": trade_date,
             "captured_at": now_str,
         }
@@ -348,6 +513,7 @@ def fetch_breadth_dashboard(save_to_db: bool = True, db_path: Optional[Path] = N
     metrics = compute_breadth_metrics(df)
     metrics["trade_date"] = trade_date
     metrics["captured_at"] = now_str
+    metrics["data_source"] = data_source
     metrics["status"] = "OK"
 
     conn = get_conn(db_path)

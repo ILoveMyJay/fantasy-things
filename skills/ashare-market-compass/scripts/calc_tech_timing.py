@@ -28,13 +28,57 @@ EM_KLINE_HOSTS = [
 ]
 
 
+def _fetch_index_kline_sina(secid: str, klt: int = 101, limit: int = 180) -> Optional[pd.DataFrame]:
+    """东财 WAF 限流时的自动备源：新浪官方指数日K（周K由日K按 W-FRI 严格无未来重采样）"""
+    sym_map = {
+        "1.000001": "sh000001",
+        "1.000300": "sh000300",
+        "0.399006": "sz399006",
+        "1.000688": "sh000688",
+        "1.000985": "sh000985",
+    }
+    sina_sym = sym_map.get(secid)
+    if not sina_sym:
+        return None
+    try:
+        import akshare as ak
+        df = ak.stock_zh_index_daily(symbol=sina_sym)
+        if df is None or df.empty:
+            return None
+        df = df.copy()
+        df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+        df = df.sort_values("date").reset_index(drop=True)
+        for col in ("open", "high", "low", "close", "volume"):
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+        df["amount"] = df["volume"] * df["close"]
+        if klt == 102:
+            w = df.tail(max(limit * 6, 900)).copy()
+            w["dt"] = pd.to_datetime(w["date"])
+            w = (
+                w.set_index("dt")
+                .resample("W-FRI")
+                .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum", "amount": "sum"})
+                .dropna()
+                .reset_index()
+            )
+            w["date"] = w["dt"].dt.strftime("%Y-%m-%d")
+            res = w[["date", "open", "close", "high", "low", "volume", "amount"]].tail(limit).reset_index(drop=True)
+        else:
+            res = df[["date", "open", "close", "high", "low", "volume", "amount"]].tail(limit).reset_index(drop=True)
+        return res if len(res) >= 60 else None
+    except Exception as e:
+        sys.stderr.write(f"[calc_tech_timing] sina fallback {secid} klt={klt} failed: {e}\n")
+        return None
+
+
 def fetch_index_kline(secid: str, klt: int = 101, limit: int = 180) -> Optional[pd.DataFrame]:
     """
     klt=101 日K, klt=102 周K
     fields2: f51日期, f52开, f53收, f54高, f55低, f56成交量, f57成交额
+    优先东财，若东财 WAF 断连则自动切换新浪备源（严守零造假）。
     """
     last_err = None
-    for attempt in range(4):
+    for attempt in range(2):
         base = EM_KLINE_HOSTS[attempt % len(EM_KLINE_HOSTS)]
         url = (
             f"{base}?secid={secid}&fields1=f1,f2&fields2=f51,f52,f53,f54,f55,f56,f57"
@@ -42,7 +86,7 @@ def fetch_index_kline(secid: str, klt: int = 101, limit: int = 180) -> Optional[
         )
         try:
             req = urllib.request.Request(url, headers=HEADERS)
-            with urllib.request.urlopen(req, timeout=6) as r:
+            with urllib.request.urlopen(req, timeout=5) as r:
                 klines = (json.loads(r.read().decode("utf-8")).get("data") or {}).get("klines") or []
             if not klines:
                 continue
@@ -66,8 +110,13 @@ def fetch_index_kline(secid: str, klt: int = 101, limit: int = 180) -> Optional[
                 return df
         except Exception as e:
             last_err = e
-            time.sleep(0.35 * (attempt + 1))
-    sys.stderr.write(f"[calc_tech_timing] kline {secid} klt={klt} failed after retries: {last_err}\n")
+            time.sleep(0.25 * (attempt + 1))
+
+    # 自动切换新浪备源
+    df_fb = _fetch_index_kline_sina(secid, klt=klt, limit=limit)
+    if df_fb is not None:
+        return df_fb
+    sys.stderr.write(f"[calc_tech_timing] kline {secid} klt={klt} failed after retries & fallback: {last_err}\n")
     return None
 
 
@@ -243,10 +292,16 @@ def compute_tech_indicators(df: pd.DataFrame) -> Dict[str, Any]:
 
 
 def fetch_tech_timing_dashboard() -> Dict[str, Any]:
-    """分别计算上证指数(000001)与沪深300(000300)的周K(定大趋势)与日K(找入场)"""
-    targets = [("SH000001", "1.000001", "上证指数"), ("SH000300", "1.000300", "沪深300")]
+    """
+    1. 核心大盘（定总仓位）：上证指数(000001) + 沪深300(000300) 的周K(定大趋势)与日K(找入场)
+    2. 双创科技风格子面板（仅作风格轮动与强弱排序参考，不干扰大盘总仓位仲裁）：
+       创业板指(399006) + 科创50(000688) 的周K与日K
+    """
+    core_targets = [("SH000001", "1.000001", "上证指数"), ("SH000300", "1.000300", "沪深300")]
+    style_targets = [("SZ399006", "0.399006", "创业板指"), ("SH000688", "1.000688", "科创50")]
+
     results: Dict[str, Any] = {}
-    for key, secid, name in targets:
+    for key, secid, name in core_targets:
         df_w = fetch_index_kline(secid, klt=102, limit=160)
         df_d = fetch_index_kline(secid, klt=101, limit=180)
         results[key] = {
@@ -255,7 +310,17 @@ def fetch_tech_timing_dashboard() -> Dict[str, Any]:
             "daily": compute_tech_indicators(df_d) if df_d is not None else {"status": "ERROR"},
         }
 
-    # 以核心大盘(上证 + 沪深300)综合得出技术面周线与日线判定
+    style_results: Dict[str, Any] = {}
+    for key, secid, name in style_targets:
+        df_w = fetch_index_kline(secid, klt=102, limit=160)
+        df_d = fetch_index_kline(secid, klt=101, limit=180)
+        style_results[key] = {
+            "name": name,
+            "weekly": compute_tech_indicators(df_w) if df_w is not None else {"status": "ERROR"},
+            "daily": compute_tech_indicators(df_d) if df_d is not None else {"status": "ERROR"},
+        }
+
+    # 以核心大盘(上证 + 沪深300)综合得出技术面周线与日线判定（绝不混入双创高波动）
     w_sigs = [results[k]["weekly"].get("signal") for k in results if results[k]["weekly"].get("signal")]
     d_sigs = [results[k]["daily"].get("signal") for k in results if results[k]["daily"].get("signal")]
 
@@ -273,6 +338,23 @@ def fetch_tech_timing_dashboard() -> Dict[str, Any]:
     weekly_sig = _agg(w_sigs)
     daily_sig = _agg(d_sigs)
 
+    # 双创科技风格强弱摘要（纯风格参考）
+    sw_sigs = [style_results[k]["weekly"].get("signal") for k in style_results if style_results[k]["weekly"].get("signal")]
+    sd_sigs = [style_results[k]["daily"].get("signal") for k in style_results if style_results[k]["daily"].get("signal")]
+    tech_style_weekly = _agg(sw_sigs)
+    tech_style_daily = _agg(sd_sigs)
+
+    cyb_d = style_results.get("SZ399006", {}).get("daily", {})
+    kc_d = style_results.get("SH000688", {}).get("daily", {})
+    leader_note = "双创均未明显走强"
+    if cyb_d.get("score") is not None and kc_d.get("score") is not None:
+        if cyb_d["score"] > kc_d["score"]:
+            leader_note = f"日线相对强弱：创业板指(得分 {cyb_d['score']:+.1f}) > 科创50(得分 {kc_d['score']:+.1f})"
+        elif kc_d["score"] > cyb_d["score"]:
+            leader_note = f"日线相对强弱：科创50(得分 {kc_d['score']:+.1f}) > 创业板指(得分 {cyb_d['score']:+.1f})"
+        else:
+            leader_note = f"日线强弱持平（创业板指 / 科创50 均报 {cyb_d['score']:+.1f}）"
+
     # 技术面综合规则（布鲁斯：日线服从周线；同向确认，冲突偏中性）
     if weekly_sig == daily_sig and weekly_sig in ("多", "空"):
         tech_overall = weekly_sig
@@ -288,6 +370,10 @@ def fetch_tech_timing_dashboard() -> Dict[str, Any]:
     return {
         "status": "OK" if (w_sigs and d_sigs) else "ERROR",
         "indices": results,
+        "tech_style_indices": style_results,
+        "tech_style_weekly": tech_style_weekly,
+        "tech_style_daily": tech_style_daily,
+        "tech_style_note": leader_note,
         "weekly_signal": weekly_sig,
         "daily_signal": daily_sig,
         "tech_signal": tech_overall,
