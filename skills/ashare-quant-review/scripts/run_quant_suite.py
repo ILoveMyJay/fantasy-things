@@ -32,6 +32,8 @@ from fetch_etf_flows import fetch_etf_flows_dashboard
 from fetch_etf_radar import fetch_etf_radar_dashboard
 from fetch_leverage_margin import fetch_leverage_margin_dashboard
 from fetch_fund_flow import fetch_fund_flow_dashboard, generate_fund_flow_markdown
+from fetch_news_catalyst import fetch_news_catalyst_dashboard
+from signal_engine import evaluate_traffic_light_signals
 
 
 def build_executive_summary(data: dict) -> dict:
@@ -138,6 +140,8 @@ def generate_markdown_dashboard(data: dict) -> str:
     divergence = data.get('divergence', {})
     sentiment_label = data.get('sentiment_label', {})
     exec_sum = data.get('executive_summary', {})
+    news = data.get('news_catalyst', {})
+    signals = data.get('traffic_light', {})
 
     md = []
     md.append("# 📊 A股全维度量化态势与大盘方向复盘报告\n")
@@ -146,6 +150,57 @@ def generate_markdown_dashboard(data: dict) -> str:
         f"**交易时段**：`{tech.get('session_phase', 'unknown')}` | "
         f"**数据原则**：全链路实盘直连，缺失显式标 N/A，严禁伪造\n"
     )
+
+    # =========================================================================
+    # 置顶：🚦 三级红绿灯拐点信号与大阳线中轨监测
+    # =========================================================================
+    if signals:
+        md.append("## 🚦 三级红绿灯拐点信号与大阳线中轨监测\n")
+        md.append(f"- **当前主信号灯**：**{signals.get('primary_light')}**")
+        md.append(f"- **操作执行指令**：{signals.get('action_call')}")
+        md.append(
+            f"- **推送判定**：`{'🔔 建议立即提醒' if signals.get('should_notify') else '🔕 静默观察'}`"
+            f"（{signals.get('notify_reason')}）\n"
+        )
+
+        # 三灯硬核条件明细表
+        md.append("| 信号灯 | 当前状态 | 命中数 | 逐项量化核验明细 |")
+        md.append("| :---: | :---: | :---: | :--- |")
+        for icon, label, key in (
+            ("🟢", "左侧共振抄底", "green"),
+            ("🔵", "右侧回踩确认", "blue"),
+            ("🔴", "过热/风控警戒", "red"),
+        ):
+            grp = signals.get(key) or {}
+            st = "**已触发**" if grp.get("active") else "未触发"
+            hits_str = f"`{grp.get('hits', 0)}/{grp.get('total', 0)}`"
+            details = "；".join(
+                f"{'✅' if c['hit'] else '⬜'}{c['name']}({c['detail']})"
+                for c in grp.get("checks", [])
+            )
+            md.append(f"| {icon} **{label}** | {st} | {hits_str} | {details} |")
+        md.append("")
+
+        # 锚定大阳线中轨监测子表
+        anc = signals.get("anchor_candle") or {}
+        if anc.get("has_anchor") and anc.get("levels"):
+            md.append(f"**📐 锚定大阳线中轨监测（锚定日 `{anc.get('anchor_date')}` / T+{anc.get('days_since_anchor')}）**：{anc.get('status_note')}")
+            md.append("| 核心指数 | 锚定日涨幅 | 强势上 1/3 位 | **大阳线中轨 (50% 生命线)** | 当前点位 | 距中轨空间 | 状态 |")
+            md.append("| :--- | :---: | :---: | :---: | :---: | :---: | :---: |")
+            state_cn = {
+                "anchor_day": "大阳线爆发当日(已锁锚)",
+                "above_midpoint": "✅ 稳守中轨上方",
+                "below_midpoint": "🔴 跌破中轨警示",
+            }
+            for code in ("000001", "000688", "399006"):
+                lv = anc["levels"].get(code)
+                if lv:
+                    md.append(
+                        f"| **{lv['name']}** (`{code}`) | `{lv['anchor_pct']:+.2f}%` | "
+                        f"`{lv['upper_third']}` | **`{lv['midpoint']}`** | `{lv['current_price']}` | "
+                        f"`{lv['dist_to_mid_pct']:+.2f}%` | {state_cn.get(lv['state'], lv['state'])} |"
+                    )
+            md.append("")
 
     # =========================================================================
     # 顶部总览：今日大盘形势一页总览
@@ -387,6 +442,28 @@ def generate_markdown_dashboard(data: dict) -> str:
         md.append(generate_fund_flow_markdown(fund_flow))
         md.append("")
 
+    # =========================================================================
+    # 看板 8: 实时财经快讯与产业政策催化雷达
+    # =========================================================================
+    md.append("## 看板 8：实时财经快讯与产业政策催化雷达\n")
+    sources_str = " + ".join(news.get("sources") or ["暂无可用源"])
+    md.append(
+        f"> **新闻源**：`{sources_str}` | 已扫描 `{news.get('raw_scanned_count', 0)}` 条实时电报 | "
+        f"**催化概览**：{news.get('catalyst_summary', 'N/A')}\n"
+    )
+    cats = news.get("top_catalysts") or []
+    if cats:
+        md.append("| 时间 | 来源 | 催化主题 | 极性 | 快讯要点（附原文可溯源） |")
+        md.append("| :---: | :---: | :---: | :---: | :--- |")
+        for c in cats[:8]:
+            t_short = str(c.get("time", ""))[5:16]  # MM-DD HH:MM
+            topic_str = "/".join(c.get("topics") or [])
+            title = str(c.get("title", "")).replace("|", "｜")
+            url = c.get("url") or ""
+            title_cell = f"[{title}]({url})" if url else title
+            md.append(f"| `{t_short}` | {c.get('source')} | `{topic_str}` | **{c.get('polarity')}** | {title_cell} |")
+        md.append("")
+
     return "\n".join(md)
 
 
@@ -397,40 +474,43 @@ def main():
     parser.add_argument('--save', type=str, default=None, help="将 Markdown 报告保存到指定文件路径")
     args = parser.parse_args()
 
-    sys.stderr.write("[1/8] 正在拉取外围宏观流动性与中美利差...\n")
+    sys.stderr.write("[1/9] 正在拉取外围宏观流动性与中美利差...\n")
     macro = fetch_macro_dashboard()
 
-    sys.stderr.write("[2/8] 正在获取大盘总量能、核心宽基指数与双创 TCR...\n")
+    sys.stderr.write("[2/9] 正在获取大盘总量能、核心宽基指数与双创 TCR...\n")
     tech = fetch_tech_volume_dashboard()
 
-    sys.stderr.write("[3/8] 正在拉取行业板块强弱与主力资金主线...\n")
+    sys.stderr.write("[3/9] 正在拉取行业板块强弱与主力资金主线...\n")
     sectors = fetch_sector_rotation_dashboard()
 
     spot_chg = tech.get('indices_detail', {}).get('000001', {}).get('pct_chg')
     vol_delta = tech.get('delta_pct')
 
-    sys.stderr.write("[4/8] 正在计算全市场微观结构与 5500+ 个股真中位数情绪...\n")
+    sys.stderr.write("[4/9] 正在计算全市场微观结构与 5500+ 个股真中位数情绪...\n")
     sentiment = fetch_market_sentiment(args.date, index_pct=spot_chg if spot_chg is not None else 0.0)
 
-    sys.stderr.write("[5/8] 正在解析期指基差、中信席位与大小盘风格分化...\n")
+    sys.stderr.write("[5/9] 正在解析期指基差、中信席位与大小盘风格分化...\n")
     cffex = fetch_cffex_dashboard(
         args.date,
         spot_chg_pct=spot_chg if spot_chg is not None else 0.0,
         market_turnover_delta_pct=vol_delta if vol_delta is not None else 0.0,
     )
 
-    sys.stderr.write("[6/8] 正在拉取 20 只核心宽基 ETF 官方净申赎与 20/60 日同进度雷达...\n")
+    sys.stderr.write("[6/9] 正在拉取 20 只核心宽基 ETF 官方净申赎与 20/60 日同进度雷达...\n")
     etf_flows = fetch_etf_flows_dashboard(args.date)
     etf_quotes_map = {
         r['symbol']: r for r in etf_flows.get('core_etf_flows', []) if r.get('symbol')
     }
     etf_radar = fetch_etf_radar_dashboard(etf_quotes=etf_quotes_map)
 
-    sys.stderr.write("[7/8] 正在获取全市场两融余额、滚动 5 日 Em 弹性与自选股融资...\n")
+    sys.stderr.write("[7/9] 正在获取全市场两融余额、滚动 5 日 Em 弹性与自选股融资...\n")
     margin_data = fetch_leverage_margin_dashboard()
 
-    sys.stderr.write("[8/8] 正在穿透自选股实时主力净流入与 DDX 筹码雷达...\n")
+    sys.stderr.write("[8/9] 正在穿透自选股实时主力净流入与 DDX 筹码雷达...\n")
     fund_flow = fetch_fund_flow_dashboard(include_multiday=True)
+
+    sys.stderr.write("[9/9] 正在扫描新浪+东财 7x24 实时财经快讯与催化并计算三级红绿灯...\n")
+    news_catalyst = fetch_news_catalyst_dashboard()
 
     mb_raw = sentiment.get('market_breadth') or {}
     median_pct = mb_raw.get('median_change_pct')
@@ -456,10 +536,12 @@ def main():
         'etf_radar': etf_radar,
         'leverage_margin': margin_data,
         'fund_flow': fund_flow,
+        'news_catalyst': news_catalyst,
         'divergence': divergence,
         'sentiment_label': sentiment_label,
     }
     full_data['executive_summary'] = build_executive_summary(full_data)
+    full_data['traffic_light'] = evaluate_traffic_light_signals(full_data)
 
     markdown_report = generate_markdown_dashboard(full_data)
 
