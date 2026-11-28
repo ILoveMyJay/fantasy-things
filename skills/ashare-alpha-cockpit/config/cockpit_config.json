@@ -1,0 +1,69 @@
+{
+  "engine_version": "cockpit-v1.0",
+  "description": "ashare-alpha-cockpit 实证融合引擎配置（基于 5 年零未来数据 Phase 0 因子体检 + Walk-Forward 样本外验证锁定）",
+  "l1_confirm": {
+    "erp_weight": 1.5,
+    "erp_bull_z": 1.5,
+    "erp_bear_mild_z": -1.2,
+    "pcr_weight": 1.0,
+    "pcr_panic_bull_score": 0.5,
+    "pcr_complacency_bear_score": -0.5,
+    "pcr_fake_bottom_veto_score": -1.0,
+    "basis_weight": 1.0,
+    "basis_bull_pct120": 75.0,
+    "basis_bear_pct120": 15.0,
+    "basis_dividend_floor_ann_pct": -5.0,
+    "etf_weight": 0.0
+  },
+  "l1_arbitration": {
+    "default_hysteresis_k": 2,
+    "low_freq_hysteresis_k": 3,
+    "fast_hard_bear_exit": true,
+    "dual_bear_min_confirm_score": 25.0,
+    "dual_bear_require_multi_or_erp": true,
+    "graded_position_map": {
+      "多": 1.0,
+      "准备多": 0.5,
+      "观望(中性)": 0.3,
+      "准备空": 0.2,
+      "空": 0.0
+    }
+  },
+  "l2_tactical": {
+    "left_tail_median_1d_pct": -4.0,
+    "left_tail_median_5d_pct": -8.0,
+    "left_tail_ic_raw_ann_pct": -25.0,
+    "probe_position": 0.4,
+    "probe_max_days": 10,
+    "probe_stop_loss_pct": -0.05,
+    "vbottom_max_ext_ma20_pct": 5.0,
+    "vbottom_max_ret10d_pct": 10.0,
+    "blowoff_adv_ratio_pct": 85.0,
+    "blowoff_adv_amt_ratio_pct": 80.0,
+    "blowoff_ext_ma20_pct": 8.0,
+    "blowoff_cap_position": 0.5,
+    "blowoff_cooldown_days": 3
+  },
+  "l3_style": {
+    "tcr_healthy_low_pct": 25.0,
+    "tcr_healthy_high_pct": 37.5,
+    "tcr_froth_threshold_pct": 40.0,
+    "tcr_froth_cap_position": 0.3,
+    "broken_midpoint_cap_position": 0.2,
+    "blue_light_boost_position": 0.8,
+    "blue_light_max_days": 5,
+    "broken_board_healthy_max_pct": 35.0
+  },
+  "phase2_stock_gate": {
+    "max_single_stock_pct_by_l1_exposure": [
+      { "min_l1_pos": 0.80, "max_single_pct": 20.0, "regime_label": "多头满仓期（允许正常建仓）" },
+      { "min_l1_pos": 0.40, "max_single_pct": 12.0, "regime_label": "试仓/中性偏多期（控制单票轻中仓）" },
+      { "min_l1_pos": 0.20, "max_single_pct": 5.0,  "regime_label": "防守/警戒期（仅允许极轻仓或只卖不买）" },
+      { "min_l1_pos": 0.00, "max_single_pct": 0.0,  "regime_label": "空仓防守期（严禁新开多仓，仅做观察池跟踪）" }
+    ],
+    "min_rr_ratio": 1.8,
+    "max_chase_ext_ma20_pct": 12.0,
+    "max_stop_distance_pct": 10.0,
+    "min_turnover_yi": 1.5
+  }
+}
