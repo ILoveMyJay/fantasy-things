@@ -103,7 +103,12 @@ def render_markdown(payload: Dict[str, Any]) -> str:
         lines.append("| 指标 | 最新读数 | 说明 |")
         lines.append("| :--- | :---: | :--- |")
         lines.append(f"| **涨 / 跌 / 平家数** | `涨{b['up_count']} / 跌{b['down_count']} / 平{b['flat_count']}` | 涨停 `{b['limit_up']}` / 跌停 `{b['limit_down']}` / 炸板率 `{b['broken_board_rate']}%` |")
-        lines.append(f"| **涨家占比 / 涨额占比** | `{b['adv_ratio']}%` / `{b['adv_amt_ratio']}%` | 额价差 `{b['amt_breadth_spread']:+.2f}pp`，总成交 `{b['total_amount_yi']}亿`（量比 `{b.get('vol_ratio_prev')}`） |")
+        amt_desc = (
+            f"当前 `{b['total_amount_yi']}亿` → 预估全天 **`{b['estimated_full_day_amount_yi']}亿`**（{b['session_phase']}，量比 `{b.get('vol_ratio_prev')}`）"
+            if b.get("is_intraday")
+            else f"总成交 `{b['total_amount_yi']}亿`（{b.get('session_phase', '盘后收盘')}，量比 `{b.get('vol_ratio_prev')}`）"
+        )
+        lines.append(f"| **涨家占比 / 涨额占比** | `{b['adv_ratio']}%` / `{b['adv_amt_ratio']}%` | 额价差 `{b['amt_breadth_spread']:+.2f}pp`，{amt_desc} |")
         lines.append(f"| **全A真中位数 / 5日累计** | **`{b['median_pct']:+.2f}%`** / {_fmt(b.get('median_cum_5d'), '%')} | 左尾探针阈值：`≤-4.0%` 或 5日 `≤-8.0%` |")
         lines.append(f"| **双创拥挤度 TCR** | **`{b['tcr_double_tech']}%`** (120D分位 {_fmt(b.get('tcr_pct120'), '%')}) | 健康区 `25%~37.5%`；红灯 `>40%且放量滞涨` |")
         lines.append(f"| **TRIN_额 / MCL** | `{b['trin_amount']}` / `{b['mcl']}` | 10日ADR `{b.get('adr_10')}`（牛市 MCL<-150 警惕失血） |\n")

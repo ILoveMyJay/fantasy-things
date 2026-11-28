@@ -25,7 +25,7 @@ from cockpit_engine import (
     validate_module_dates,
 )
 from db_store import fetch_ledger_recent, get_conn
-from fetch_breadth_tcr import classify_breadth_scenario_cockpit, compute_breadth_and_tcr
+from fetch_breadth_tcr import calc_intraday_progress, classify_breadth_scenario_cockpit, compute_breadth_and_tcr
 from fetch_tactical_radar import detect_anchor_bullish_candle, evaluate_traffic_lights
 from stock_gate import evaluate_single_stock_gate
 
@@ -135,6 +135,36 @@ def test_breadth_singularity_fix_distinguishes_2026_11_27_vs_2021_02_18():
     assert sc_26 == "BROAD_SURGE_EXPANDING"
     sc_21, _ = classify_breadth_scenario_cockpit(85.9, 4.288, -25.3, vol_ratio_prev=1.24, hs300_ext_ma20_pct=4.30)
     assert sc_21 == "TOP_DIVERGENCE"
+
+
+def test_intraday_volume_projection_vs_post_close():
+    """盘中运行自动按已开市分钟折算全天量；盘后/非当日/盘后数据源绝不折算 (scale=1.0)。"""
+    import datetime as dt
+
+    # 10:30 AM (已开市 60/240 分钟 -> ×4.0)
+    p_am = calc_intraday_progress("2026-11-30", now_dt=dt.datetime(2026, 11, 30, 10, 30), is_realtime_source=True)
+    assert p_am["is_intraday"] is True and p_am["elapsed_minutes"] == 60 and p_am["scale_factor"] == 4.0
+
+    # 12:15 PM 午休 (固定 120/240 分钟 -> ×2.0)
+    p_lunch = calc_intraday_progress("2026-11-30", now_dt=dt.datetime(2026, 11, 30, 12, 15), is_realtime_source=True)
+    assert p_lunch["is_intraday"] is True and p_lunch["elapsed_minutes"] == 120 and p_lunch["scale_factor"] == 2.0
+
+    # 14:40 PM 尾盘 (220/240 分钟 -> ×1.0909)
+    p_tail = calc_intraday_progress("2026-11-30", now_dt=dt.datetime(2026, 11, 30, 14, 40), is_realtime_source=True)
+    assert p_tail["is_intraday"] is True and p_tail["elapsed_minutes"] == 220
+    assert abs(p_tail["scale_factor"] - (240.0 / 220.0)) < 0.001
+
+    # 15:30 PM 盘后 -> 不折算 (scale=1.0)
+    p_close = calc_intraday_progress("2026-11-30", now_dt=dt.datetime(2026, 11, 30, 15, 30), is_realtime_source=True)
+    assert p_close["is_intraday"] is False and p_close["scale_factor"] == 1.0
+
+    # 周末跑周五数据 (trade_date < today) -> 不折算
+    p_wknd = calc_intraday_progress("2026-11-27", now_dt=dt.datetime(2026, 11, 28, 10, 30), is_realtime_source=True)
+    assert p_wknd["is_intraday"] is False and p_wknd["scale_factor"] == 1.0
+
+    # Tushare 盘后数据源 -> 即使在盘中时间也不折算
+    p_ts = calc_intraday_progress("2026-11-30", now_dt=dt.datetime(2026, 11, 30, 14, 40), is_realtime_source=False)
+    assert p_ts["is_intraday"] is False and p_ts["scale_factor"] == 1.0
 
 
 def test_l3_tcr_froth_stagnation_cut_2026_07_01_case():

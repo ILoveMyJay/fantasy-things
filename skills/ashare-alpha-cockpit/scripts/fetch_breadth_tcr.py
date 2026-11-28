@@ -318,12 +318,73 @@ def _fetch_all_a_snapshot_tushare(trade_date: str) -> Tuple[Optional[pd.DataFram
     return None, trade_date
 
 
+def calc_intraday_progress(
+    trade_date: str,
+    now_dt: Optional[datetime.datetime] = None,
+    is_realtime_source: bool = True,
+) -> Dict[str, Any]:
+    """
+    判断当前是盘中还是盘后，并精确计算A股已开市交易分钟数（满分 240 分钟）：
+      - 上午 09:30 ~ 11:30 -> 1 ~ 120 分钟
+      - 午间休市 11:30 ~ 13:00 -> 固定 120 分钟
+      - 下午 13:00 ~ 15:00 -> 120 ~ 240 分钟
+      - 15:00 及以后 / 周末节假日 / 历史交易日 / Tushare盘后源 -> 盘后收盘（240 分钟，折算系数 1.0，不折算）
+    """
+    now = now_dt or datetime.datetime.now()
+    today_str = now.strftime("%Y-%m-%d")
+
+    if not is_realtime_source or trade_date != today_str:
+        return {
+            "is_intraday": False,
+            "elapsed_minutes": 240,
+            "scale_factor": 1.0,
+            "session_phase": "盘后收盘(无需折算)",
+        }
+
+    hm = now.hour * 60 + now.minute
+    open_am = 9 * 60 + 30    # 570
+    close_am = 11 * 60 + 30  # 690
+    open_pm = 13 * 60        # 780
+    close_pm = 15 * 60       # 900
+
+    if hm >= close_pm:
+        return {
+            "is_intraday": False,
+            "elapsed_minutes": 240,
+            "scale_factor": 1.0,
+            "session_phase": "盘后收盘(无需折算)",
+        }
+    if hm <= open_am:
+        return {
+            "is_intraday": True,
+            "elapsed_minutes": 1,
+            "scale_factor": 1.0,
+            "session_phase": "盘前集合竞价(暂不折算)",
+        }
+    if hm <= close_am:
+        elapsed = max(1, hm - open_am)
+    elif hm < open_pm:
+        elapsed = 120
+    else:
+        elapsed = 120 + (hm - open_pm)
+
+    elapsed = max(1, min(240, elapsed))
+    scale = round(240.0 / elapsed, 4)
+    return {
+        "is_intraday": True,
+        "elapsed_minutes": elapsed,
+        "scale_factor": scale,
+        "session_phase": f"盘中实时({now.strftime('%H:%M')}，已开市{elapsed}/240分，折算系数×{scale:.2f})",
+    }
+
+
 def fetch_breadth_tcr_dashboard(
     save: bool = True,
     db_path: Optional[Path] = None,
     hs300_ext_ma20_pct: Optional[float] = None,
+    now_dt: Optional[datetime.datetime] = None,
 ) -> Dict[str, Any]:
-    """抓取全A微观宽广度/TRIN/中位数/TCR（东财实时 -> Tushare盘后容错，严格保留真实 trade_date）。"""
+    """抓取全A微观宽广度/TRIN/中位数/TCR（东财实时 -> Tushare盘后容错，盘中自动按开市分钟折算全天量比）。"""
     trade_date = _get_latest_market_date()
     data_source = "eastmoney_realtime"
     df = fetch_all_a_snapshot()
@@ -347,9 +408,21 @@ def fetch_breadth_tcr_dashboard(
     if not m_init:
         return {"status": "ERROR", "trade_date": trade_date, "error": "全A有效成交样本为空"}
 
-    vol_ratio_prev = round(m_init["total_amount_yi"] / prev_amt, 3) if prev_amt and prev_amt > 0 else None
+    prog = calc_intraday_progress(
+        trade_date=trade_date,
+        now_dt=now_dt,
+        is_realtime_source=(data_source == "eastmoney_realtime"),
+    )
+    est_full_amt_yi = round(m_init["total_amount_yi"] * prog["scale_factor"], 2)
+    vol_ratio_prev = round(est_full_amt_yi / prev_amt, 3) if prev_amt and prev_amt > 0 else None
     metrics = compute_breadth_and_tcr(df, vol_ratio_prev=vol_ratio_prev, hs300_ext_ma20_pct=hs300_ext_ma20_pct)
     metrics["vol_ratio_prev"] = vol_ratio_prev
+    metrics["estimated_full_day_amount_yi"] = est_full_amt_yi
+    metrics["is_intraday"] = prog["is_intraday"]
+    metrics["elapsed_minutes"] = prog["elapsed_minutes"]
+    metrics["volume_scale_factor"] = prog["scale_factor"]
+    metrics["session_phase"] = prog["session_phase"]
+    metrics["data_source"] = data_source
 
     # 历史滚动计算：MCL、MSI、ADR10、5日累计中位数、TCR 120日分位
     net_series = [float((h.get("up_count") or 0) - (h.get("down_count") or 0)) for h in prev_hist]
